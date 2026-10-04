@@ -1,0 +1,4 @@
+{"v":1,"id":"hello-1","method":"system.handshake","params":{"protocolVersion":1}}
+{"v":1,"id":"hello-1","ok":true,"result":{"provider":{"name":"qqmusic-provider","version":"0.1.0","mode":"live"},"protocol":{"version":1,"maxLineBytes":1048576}},"warnings":[]}
+{"v":1,"id":"ping-1","method":"system.ping","params":{}}
+{"v":1,"id":"ping-1","ok":true,"result":{"pong":true},"warnings":[]}

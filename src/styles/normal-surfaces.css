@@ -1,0 +1,182 @@
+/* Cover luminance surfaces stay local to the normal listening stage. */
+.app-shell[data-cover-tone="light"] {
+  color-scheme: light;
+  --vinyl: var(--cover-surface-base);
+  --vinyl-raised: var(--cover-surface-raised);
+  --canopy: var(--cover-surface-lowered);
+  --canopy-soft: var(--cover-surface-raised);
+  --paper: var(--cover-on-surface);
+  --paper-muted: var(--cover-on-surface-muted);
+  --lichen: var(--cover-accent-light);
+  --lichen-deep: color-mix(in srgb, var(--cover-accent-light) 82%, #18211f);
+  --patina: color-mix(in srgb, var(--cover-on-surface-muted) 86%, var(--cover-surface-lowered));
+  --line: var(--cover-line-light);
+  --surface: color-mix(in srgb, var(--cover-surface-raised) 78%, transparent);
+  --shadow: 0 24px 70px rgb(24 33 31 / 18%);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--cover-accent-light) 72%, #18211f);
+  --cover-blend-cap: 0.13;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cover-top) var(--cover-glow-sky-mix), var(--cover-surface-raised)) 0%,
+      color-mix(in srgb, var(--cover-ambient) var(--cover-glow-bottom-mix), var(--cover-surface-base)) 52%,
+      var(--cover-surface-base) 100%
+    );
+}
+
+.app-shell[data-cover-tone="light"] .top-bar {
+  border-bottom-color: var(--cover-line-light);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cover-top) var(--cover-glow-sky-mix), var(--cover-surface-raised)),
+      color-mix(in srgb, var(--cover-surface-raised) 86%, transparent)
+    );
+  color: var(--cover-on-surface);
+  box-shadow: 0 8px 24px rgb(24 33 31 / 7%);
+  transition: background 1.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 1.4s ease, box-shadow 1.4s ease;
+}
+
+.app-shell[data-cover-tone="light"] .stage {
+  color: var(--cover-on-surface);
+  transition: background 1.4s cubic-bezier(0.16, 1, 0.3, 1), color 1.4s ease;
+}
+
+.app-shell[data-cover-tone="light"] .stage__glow {
+  opacity: 0.62;
+}
+
+.app-shell[data-cover-tone="light"] .stage__glow--artwork-core {
+  opacity: 0.7;
+}
+
+.app-shell[data-cover-tone="light"] .album-artwork {
+  border-color: color-mix(in srgb, var(--cover-accent-light) 36%, var(--cover-line-light));
+  box-shadow:
+    0 18px 44px -14px rgb(24 33 31 / 22%),
+    0 6px 18px -5px rgb(24 33 31 / 12%),
+    0 0 42px -10px color-mix(in srgb, var(--cover-vibrant) calc(var(--cover-glow-intensity, 1) * 14%), transparent),
+    0 16px 68px 8px color-mix(in srgb, var(--cover-primary) calc(var(--cover-glow-intensity, 1) * 9%), transparent);
+  transition: box-shadow 1.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 1.4s ease;
+}
+
+.app-shell[data-cover-tone="light"] .album-artwork--compact {
+  box-shadow:
+    0 6px 16px rgb(24 33 31 / 14%),
+    0 0 12px -3px color-mix(in srgb, var(--cover-vibrant) calc(var(--cover-glow-intensity, 1) * 10%), transparent);
+}
+
+.app-shell[data-cover-tone="light"] .stage__quality-menu,
+.app-shell[data-cover-tone="light"] .fixture-menu__popover {
+  border-color: var(--cover-line-light);
+  background: var(--cover-surface-raised);
+  box-shadow: 0 12px 28px rgb(24 33 31 / 16%);
+  color: var(--cover-on-surface);
+}
+
+.app-shell[data-cover-tone="light"] .lyrics-scroll__back-button {
+  border-color: color-mix(in srgb, var(--cover-accent-light) 48%, var(--cover-line-light));
+  background: color-mix(in srgb, var(--cover-surface-raised) 92%, transparent);
+  color: var(--cover-on-surface);
+  box-shadow: 0 6px 18px rgb(24 33 31 / 10%);
+  transition: background 1.4s ease, border-color 1.4s ease, color 1.4s ease, box-shadow 1.4s ease;
+}
+
+.app-shell[data-cover-tone="light"] .lyrics-scroll__back-button:hover {
+  background: color-mix(in srgb, var(--cover-accent-light) 12%, var(--cover-surface-raised));
+  border-color: var(--cover-accent-light);
+}
+
+.app-shell[data-cover-tone="light"] .player-bar {
+  border-top-color: color-mix(in srgb, var(--cover-accent-light) 44%, var(--cover-line-light));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cover-ambient) calc(var(--cover-glow-intensity, 1) * 7%), var(--cover-surface-lowered)) 0%,
+      color-mix(in srgb, var(--cover-surface-lowered) 92%, transparent) 100%
+    );
+  box-shadow: 0 -10px 28px rgb(24 33 31 / 10%);
+  transition: background 1.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 1.4s ease, box-shadow 1.4s ease;
+}
+
+.app-shell[data-cover-tone="light"] .player-bar::before {
+  opacity: 0.42;
+}
+
+.app-shell[data-cover-tone="light"] .player-bar__timeline {
+  background: radial-gradient(
+    ellipse 75% 120% at 50% 50%,
+    color-mix(in srgb, var(--cover-vibrant) calc(var(--cover-glow-intensity, 1) * 3%), transparent) 0%,
+    transparent 78%
+  );
+}
+
+.app-shell[data-cover-tone="light"] input[type="range"]::-webkit-slider-runnable-track,
+.app-shell[data-cover-tone="light"] input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--cover-accent-light) 86%, #18211f) var(--range-progress, 0%),
+    rgb(24 33 31 / 24%) var(--range-progress, 0%)
+  );
+}
+
+.app-shell[data-cover-tone="light"] input[type="range"]::-webkit-slider-thumb,
+.app-shell[data-cover-tone="light"] input[type="range"]::-moz-range-thumb {
+  background: var(--cover-accent-light);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cover-accent-light) 20%, transparent);
+}
+
+.app-shell[data-cover-tone="light"] .player-bar__play {
+  border-color: var(--cover-accent-light);
+  background: var(--cover-accent-light);
+  color: var(--cover-surface-raised);
+  box-shadow: 0 6px 18px rgb(24 33 31 / 14%);
+  transition: background 1.4s ease, border-color 1.4s ease, color 1.4s ease, box-shadow 1.4s ease;
+}
+
+.app-shell[data-cover-tone="light"] .player-bar__play:hover {
+  background: color-mix(in srgb, var(--cover-accent-light) 86%, #18211f);
+  color: var(--cover-surface-raised);
+}
+
+.app-shell[data-cover-tone="light"] .top-bar__nav button:hover,
+.app-shell[data-cover-tone="light"] .back-button:hover,
+.app-shell[data-cover-tone="light"] .account-button:hover,
+.app-shell[data-cover-tone="light"] .window-control-button:hover,
+.app-shell[data-cover-tone="light"] .queue-button:hover {
+  background: color-mix(in srgb, var(--cover-accent-light) 10%, var(--cover-surface-raised));
+  border-color: color-mix(in srgb, var(--cover-accent-light) 44%, var(--cover-line-light));
+  color: var(--cover-on-surface);
+}
+
+.app-shell[data-cover-tone="light"] .lyrics-scroll__line--active::before,
+.app-shell[data-cover-tone="light"] .needle-scale__point {
+  background: var(--cover-accent-light);
+}
+
+.app-shell[data-cover-tone="light"] .needle-scale__point {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cover-accent-light) 18%, transparent);
+}
+
+.app-shell[data-cover-tone="light"] :is(button, a, input):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* QueueDrawer is an overlay surface, not part of the listening-page theme. */
+.app-shell[data-cover-tone="light"] .queue-drawer {
+  --vinyl: #111410;
+  --vinyl-raised: #171b16;
+  --canopy: #19362b;
+  --canopy-soft: #213e33;
+  --paper: #f1ebdd;
+  --paper-muted: #c9c5b9;
+  --lichen: #b8c77a;
+  --patina: #909e94;
+  --line: rgb(130 144 134 / 25%);
+  --surface: rgb(241 235 221 / 4%);
+  background:
+    linear-gradient(180deg, rgb(25 54 43 / 42%), transparent 260px),
+    #151b16;
+  color: var(--paper);
+}

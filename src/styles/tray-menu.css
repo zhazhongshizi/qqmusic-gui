@@ -1,0 +1,172 @@
+html[data-window="tray-menu"],
+html[data-window="tray-menu"] body,
+html[data-window="tray-menu"] #root,
+html[data-window="pending"],
+html[data-window="pending"] body,
+html[data-window="pending"] #root {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+html[data-window="tray-menu"] body,
+html[data-window="pending"] body {
+  overflow: hidden;
+}
+
+.tray-menu {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  color: var(--paper);
+  font-family: var(--font-body);
+}
+
+.tray-menu__panel {
+  width: min(336px, 100%);
+  min-height: 286px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 15px;
+  overflow: hidden;
+  border: 1px solid rgb(184 199 122 / 25%);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgb(25 54 43 / 45%), transparent 48%), var(--vinyl);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 42%), inset 0 1px rgb(241 235 221 / 4%);
+}
+
+.tray-menu__track-card {
+  display: flex;
+  min-width: 0;
+  height: 70px;
+  gap: 12px;
+  align-items: center;
+}
+
+.tray-menu__cover {
+  display: grid;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--canopy);
+}
+
+.tray-menu__cover img,
+.tray-menu__cover span {
+  width: 100%;
+  height: 100%;
+}
+
+.tray-menu__cover img { object-fit: cover; }
+
+.tray-menu__cover--placeholder {
+  background:
+    linear-gradient(135deg, transparent 40%, rgb(184 199 122 / 14%) 41% 45%, transparent 46%),
+    repeating-linear-gradient(135deg, rgb(241 235 221 / 5%) 0 2px, transparent 2px 7px),
+    var(--canopy);
+}
+
+.tray-menu__track-copy { min-width: 0; }
+
+.tray-menu__eyebrow,
+.tray-menu__status {
+  display: flex;
+  align-items: center;
+  color: var(--paper-muted);
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: .11em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.tray-menu__eyebrow { gap: 6px; color: var(--lichen); }
+.tray-menu__title,
+.tray-menu__artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray-menu__title { margin-top: 4px; font-size: 15px; font-weight: 650; }
+.tray-menu__artist { margin-top: 2px; color: var(--paper-muted); font-size: 11px; }
+.tray-menu__status { margin-top: 4px; font-size: 9px; letter-spacing: .04em; text-transform: none; }
+
+.tray-menu__meter { display: inline-flex; height: 10px; gap: 2px; align-items: end; }
+.tray-menu__meter i { display: block; width: 2px; height: 5px; border-radius: 2px; background: var(--lichen); }
+.tray-menu__meter i:nth-child(2) { height: 8px; }
+.tray-menu__meter i:nth-child(3) { height: 6px; }
+.tray-menu[data-state="playing"] .tray-menu__meter i { animation: tray-meter 900ms ease-in-out infinite alternate; }
+.tray-menu[data-state="playing"] .tray-menu__meter i:nth-child(2) { animation-delay: -300ms; }
+.tray-menu[data-state="playing"] .tray-menu__meter i:nth-child(3) { animation-delay: -600ms; }
+.tray-menu[data-state="empty"] .tray-menu__meter,
+.tray-menu[data-state="error"] .tray-menu__meter { opacity: .4; }
+
+.tray-menu__transport {
+  display: flex;
+  height: 70px;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.tray-menu__transport-button,
+.tray-menu__utility-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  color: var(--paper);
+  background: transparent;
+}
+
+.tray-menu__transport-button { border-radius: 50%; transition: background-color 120ms ease, transform 120ms ease; }
+.tray-menu__transport-button--side { width: 36px; height: 36px; background: var(--vinyl-raised); }
+.tray-menu__transport-button--primary { width: 46px; height: 46px; color: var(--vinyl); background: var(--lichen); }
+.tray-menu__transport-button:not(:disabled):hover { background: var(--canopy-soft); transform: translateY(-1px); }
+.tray-menu__transport-button--primary:not(:disabled):hover { color: var(--paper); background: var(--lichen-deep); }
+
+.tray-menu__action-status { height: 18px; color: var(--clay); font-size: 10px; line-height: 18px; text-align: center; }
+.tray-menu__utility { padding-top: 7px; border-top: 1px solid var(--line); }
+.tray-menu__utility-button { width: 100%; height: 30px; gap: 8px; justify-content: flex-start; border-radius: 7px; color: var(--paper-muted); font-size: 11px; }
+.tray-menu__utility-button:hover,
+.tray-menu__utility-button:focus-visible { color: var(--paper); background: var(--canopy); }
+.tray-menu__utility-button--danger:hover,
+.tray-menu__utility-button--danger:focus-visible { color: var(--clay); }
+.tray-menu .icon { flex: 0 0 auto; }
+.tray-menu button:focus-visible { outline: 2px solid var(--lichen); outline-offset: 2px; box-shadow: 0 0 0 3px rgb(184 199 122 / 24%); }
+.tray-menu button:disabled { opacity: .35; cursor: not-allowed; }
+
+@keyframes tray-meter {
+  from { transform: scaleY(.55); }
+  to { transform: scaleY(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tray-menu[data-state="playing"] .tray-menu__meter i { animation: none; }
+  .tray-menu__transport-button { transition: none; }
+}
+
+/* Detached tray window uses the same neutral glass palette as Normal mode. */
+.tray-menu {
+  --paper: var(--normal-paper);
+  --paper-muted: var(--normal-muted);
+  --patina: var(--normal-subtle);
+  --lichen: var(--normal-paper);
+  --lichen-deep: #c6d4e7;
+  --vinyl: #202b3a;
+  --vinyl-raised: rgb(255 255 255 / 7%);
+  --canopy: rgb(255 255 255 / 9%);
+  --canopy-soft: rgb(255 255 255 / 14%);
+  --line: var(--normal-edge);
+  --font-display: var(--normal-font-display);
+}
+.tray-menu__panel {
+  border-color: var(--normal-edge);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgb(255 255 255 / 10%), transparent 65%), #252e3c;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 26%), inset 0 1px 0 rgb(255 255 255 / 18%);
+}
+.tray-menu__cover { border-color: var(--normal-edge); background: var(--canopy); }
+.tray-menu__utility-button { border-radius: 10px; }
+.tray-menu button:focus-visible { outline-color: var(--paper); box-shadow: 0 0 0 3px rgb(215 230 255 / 24%); }

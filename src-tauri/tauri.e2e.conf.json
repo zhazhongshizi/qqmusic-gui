@@ -1,0 +1,53 @@
+{
+  "identifier": "dev.qqmusic.gui.e2e",
+  "build": {
+    "beforeBuildCommand": "pnpm build:e2e"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "desktop-e2e",
+          "description": "Debug-only WebdriverIO capability for the local main window.",
+            "windows": ["main"],
+          "platforms": ["windows"],
+          "permissions": [
+            "allow-app-snapshot",
+            "allow-auth-status",
+            "allow-auth-recover",
+            "allow-auth-qr-start",
+            "allow-auth-qr-poll",
+            "allow-auth-qr-cancel",
+            "allow-auth-logout",
+            "allow-cover-get",
+            "allow-player-snapshot",
+            "allow-player-play",
+            "allow-player-pause",
+            "allow-player-stop",
+            "allow-player-seek",
+            "allow-player-set-volume",
+            "allow-player-set-muted",
+            "allow-lyrics-get",
+            "allow-catalog-search-songs",
+            "allow-catalog-discover-new-songs",
+            "allow-catalog-playlist-songs",
+            "allow-library-playlists",
+            "allow-library-liked-songs",
+            "allow-queue-snapshot",
+            "allow-queue-replace",
+            "allow-queue-enqueue",
+            "allow-queue-remove",
+            "allow-queue-move",
+            "allow-queue-play",
+            "wdio:default",
+            "wdio-webdriver:default"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

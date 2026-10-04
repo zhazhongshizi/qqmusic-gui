@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qqmusic-gui.local/contracts/protocol-v1.schema.json",
+  "title": "QQ Music GUI provider protocol v1 frame",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/success" },
+    { "$ref": "#/$defs/failure" },
+    { "$ref": "#/$defs/event" }
+  ],
+  "$defs": {
+    "version": { "type": "integer", "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "request": {
+      "type": "object",
+      "required": ["v", "id", "method", "params"],
+      "properties": {
+        "v": { "$ref": "#/$defs/version" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "params": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "warning": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "count": { "type": "integer", "minimum": 1 },
+        "message": { "type": "string", "maxLength": 512 }
+      },
+      "additionalProperties": false
+    },
+    "success": {
+      "type": "object",
+      "required": ["v", "id", "ok", "result", "warnings"],
+      "properties": {
+        "v": { "$ref": "#/$defs/version" },
+        "id": { "$ref": "#/$defs/id" },
+        "ok": { "const": true },
+        "result": { "type": "object" },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/warning" },
+          "maxItems": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "required": ["v", "id", "ok", "error"],
+      "properties": {
+        "v": { "$ref": "#/$defs/version" },
+        "id": { "$ref": "#/$defs/id" },
+        "ok": { "const": false },
+        "error": {
+          "type": "object",
+          "required": ["code", "retryable"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "retryable": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "required": ["v", "event", "payload"],
+      "properties": {
+        "v": { "$ref": "#/$defs/version" },
+        "event": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "payload": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

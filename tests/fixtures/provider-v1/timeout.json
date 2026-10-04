@@ -1,0 +1,7 @@
+{
+  "requestId": "search-timeout-1",
+  "method": "search.songs",
+  "deadlineMs": 5000,
+  "advanceClockMs": 5001,
+  "frames": []
+}

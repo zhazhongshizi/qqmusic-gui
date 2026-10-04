@@ -1,0 +1,73 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import LocalMusicLibrary from "../library/LocalMusicLibrary";
+import LocalMusicArchive from "./LocalMusicArchive";
+import { qualityPresets } from "./vendor/render-quality";
+import type { LocalMusicTrack } from "../../contracts/localMusic";
+const mocks = vi.hoisted(() => ({ read: vi.fn(), import: vi.fn(), delete: vi.fn(), play: vi.fn(), enqueue: vi.fn(), apply: vi.fn(), array: vi.fn() }));
+vi.mock("../../backend/localMusicAdapter", () => ({ getLocalMusic: mocks.read, importLocalMusic: mocks.import, deleteLocalMusic: mocks.delete }));
+vi.mock("../player/localQueue", () => ({ enqueueAndPlayLocalTrack: mocks.play, enqueueLocalTrack: mocks.enqueue }));
+vi.mock("../player/playerStore", () => ({ getCurrentTrack: () => null, usePlayerSelector: (fn: (value: object) => unknown) => fn({}), playerActions: { applyAuthoritativeSession: mocks.apply } }));
+vi.mock("./TapeDeck", () => ({ NowPlaying: () => null }));
+vi.mock("./HistoryCassetteArray", () => ({ HistoryCassetteArray: (props: { tracks: readonly LocalMusicTrack[]; onSelect: (index: number) => void; onOpen: (index: number) => void }) => {
+  mocks.array(props); return <div>{props.tracks.map((track, index) => <button key={track.id} onClick={() => props.onSelect(index)} onDoubleClick={() => props.onOpen(index)}>磁带 {track.title}</button>)}</div>;
+} }));
+const tracks: LocalMusicTrack[] = Array.from({ length: 13 }, (_, index) => ({ id: `local_${index.toString(16).padStart(64, "0")}_mp3`, title: `本地歌曲${index + 1}`, artist: "本地歌手", album: `专辑${index + 1}`, durationMs: 181000, format: "mp3" }));
+const rhine = { component: LocalMusicArchive, active: true, quality: qualityPresets.performance, superPerformance: false, onBack: () => {}, onDeck: () => {} };
+beforeEach(() => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
+  mocks.read.mockReset().mockResolvedValue({ tracks, warningCount: 0 }); mocks.import.mockReset(); mocks.delete.mockReset(); mocks.play.mockReset().mockResolvedValue(undefined); mocks.enqueue.mockReset().mockResolvedValue(undefined); mocks.apply.mockClear(); mocks.array.mockClear();
+});
+afterEach(() => { cleanup(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); });
+it("paginates the local matrix and searches the whole library without starting playback", async () => {
+  render(<LocalMusicLibrary rhine={rhine} />);
+  await screen.findByRole("button", { name: "磁带 本地歌曲1" });
+  expect(mocks.array.mock.lastCall![0].tracks).toHaveLength(8);
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  expect(await screen.findByRole("button", { name: "磁带 本地歌曲9" })).toBeInTheDocument();
+  expect(mocks.array.mock.lastCall![0].tracks).toHaveLength(5);
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "专辑13" } });
+  expect(await screen.findByRole("button", { name: "磁带 本地歌曲13" })).toBeInTheDocument();
+  expect(mocks.array.mock.lastCall![0].tracks).toHaveLength(1);
+  fireEvent.doubleClick(screen.getByRole("button", { name: "磁带 本地歌曲13" }));
+  expect(screen.getByRole("region", { name: "本地歌曲档案" })).toHaveTextContent("3:01");
+  expect(mocks.play).not.toHaveBeenCalled(); expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+it("plays or queues the selected local metadata only on an explicit action", async () => {
+  render(<LocalMusicLibrary rhine={rhine} />);
+  fireEvent.doubleClick(await screen.findByRole("button", { name: "磁带 本地歌曲3" }));
+  const detail = screen.getByRole("region", { name: "本地歌曲档案" });
+  fireEvent.click(within(detail).getByRole("button", { name: "加入本地队列" }));
+  await waitFor(() => expect(mocks.enqueue).toHaveBeenCalledExactlyOnceWith(tracks[2]));
+  expect(mocks.play).not.toHaveBeenCalled();
+  fireEvent.click(within(detail).getByRole("button", { name: "播放 本地歌曲3" }));
+  await waitFor(() => expect(mocks.play).toHaveBeenCalledExactlyOnceWith(tracks[2]));
+  fireEvent.click(screen.getByRole("button", { name: "← 返回本地音乐阵列" }));
+  expect(screen.getByRole("region", { name: "当前选中本地曲目" })).toHaveTextContent("本地歌曲3");
+});
+it("retains two-step deletion and clamps the final page after reloading", async () => {
+  mocks.read.mockResolvedValueOnce({ tracks: tracks.slice(0,9), warningCount: 0 }).mockResolvedValue({ tracks: tracks.slice(0,8), warningCount: 0 });
+  const session = { queue: { items: [] } }; mocks.delete.mockResolvedValue({ session, autoPlayStarted: false });
+  render(<LocalMusicLibrary rhine={rhine} />); await screen.findByRole("button", { name: "磁带 本地歌曲1" });
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  fireEvent.doubleClick(await screen.findByRole("button", { name: "磁带 本地歌曲9" }));
+  fireEvent.click(screen.getByRole("button", { name: "删除歌曲" })); expect(mocks.delete).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "确认删除《本地歌曲9》" }));
+  await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(tracks[8]!.id));
+  expect(await screen.findByRole("heading", { name: "本地歌曲8" })).toBeInTheDocument();
+  expect(mocks.apply).toHaveBeenCalledWith(session);
+  fireEvent.click(screen.getByRole("button", { name: "← 返回本地音乐阵列" }));
+  expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+});
+it("imports through the existing controller and recovers a failed read", async () => {
+  mocks.read.mockRejectedValueOnce(new Error("private file path"));
+  render(<LocalMusicLibrary rhine={rhine} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("本地曲库暂时不可用");
+  fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+  await screen.findByRole("button", { name: "磁带 本地歌曲1" });
+  mocks.import.mockResolvedValue({ imported: [tracks[0]], existingCount: 0, failures: [] });
+  fireEvent.click(screen.getByRole("button", { name: "导入音乐" }));
+  await screen.findByText("导入完成：新增 1 首，已存在 0 首，失败 0 项");
+  expect(mocks.import).toHaveBeenCalledOnce(); expect(mocks.read).toHaveBeenCalledTimes(3);
+  expect(screen.queryByText("private file path")).not.toBeInTheDocument();
+});

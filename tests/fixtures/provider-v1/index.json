@@ -1,0 +1,35 @@
+{
+  "protocolVersion": 1,
+  "ndjson": [
+    {
+      "file": "valid-requests.ndjson",
+      "schema": "valid",
+      "scenario": "provider-input"
+    },
+    {
+      "file": "out-of-order-responses.ndjson",
+      "schema": "valid",
+      "scenario": "host-out-of-order"
+    },
+    {
+      "file": "duplicate-response.ndjson",
+      "schema": "valid",
+      "scenario": "host-duplicate-response"
+    },
+    {
+      "file": "unknown-response.ndjson",
+      "schema": "valid",
+      "scenario": "host-unknown-response"
+    },
+    {
+      "file": "version-mismatch.ndjson",
+      "schema": "invalid",
+      "scenario": "provider-version-mismatch"
+    }
+  ],
+  "recipes": [
+    "timeout.json",
+    "invalid-utf8.hex",
+    "oversized-line.json"
+  ]
+}

@@ -1,0 +1,3 @@
+{"v":1,"id":"hello-1","method":"system.handshake","params":{"protocolVersion":1}}
+{"v":1,"id":"ping-1","method":"system.ping","params":{}}
+{"v":1,"id":"search-1","method":"search.songs","params":{"keyword":"晴天","page":1,"pageSize":20}}

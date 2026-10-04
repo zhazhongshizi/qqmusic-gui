@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray-menu",
+  "description": "Expose only playback snapshot, artwork, and fixed tray actions to the local tray control window.",
+  "windows": ["tray-menu"],
+  "platforms": ["windows"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-cover-get",
+    "allow-playback-session-snapshot",
+    "allow-tray-menu-action"
+  ]
+}

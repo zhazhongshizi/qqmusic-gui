@@ -1,0 +1,7 @@
+.playback-history { grid-column: 2 / -1; min-width: 0; }
+.playback-history .catalog-table { width: 100%; table-layout: fixed; }
+.playback-history .catalog-table th:nth-child(n) { width: auto; text-align: left; }
+.playback-history .catalog-table th:first-child { width: 35%; }
+.playback-history .catalog-table td { overflow-wrap: anywhere; white-space: normal; }
+.playback-history .catalog-table th:last-child { width: 72px; }
+.playback-history__pages { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 16px; }

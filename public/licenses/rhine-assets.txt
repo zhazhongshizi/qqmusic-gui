@@ -1,0 +1,4 @@
+RhineLabUI scene and models: LBEILC/RhineLabUI, revision 3f4b9c9e8fdc9c6aa689e8c0b2faa5c53df93826.
+Code: Copyright (c) 2026 LBEILC; see rhine-lab-ui-MIT.txt.
+Models, marks and other original-work visual elements are not covered automatically by the code MIT license. Rights remain with their respective holders. This application includes the models under the project owner's confirmed permission; no additional rights are granted to downstream users by this notice.
+Upstream resource terms: https://github.com/LBEILC/RhineLabUI#开源许可

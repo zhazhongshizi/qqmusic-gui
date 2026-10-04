@@ -1,0 +1,307 @@
+/* Terminal transport console refinement */
+.terminal-mini {
+  background:
+    radial-gradient(circle at 50% 28%, rgb(91 128 97 / 13%), transparent 31%),
+    linear-gradient(180deg, #06100c 0%, #040c09 100%);
+}
+
+.terminal-now-playing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.terminal-vinyl {
+  width: min(62vw, 220px);
+}
+
+.terminal-vinyl-caption {
+  margin-top: 7px;
+  color: rgb(139 163 145 / 78%);
+  letter-spacing: 0.16em;
+}
+
+.terminal-track-info {
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.terminal-track-info h1 {
+  font-size: 27px;
+}
+
+.terminal-track-info p {
+  color: #ebe8da;
+  font-size: 11px;
+}
+
+.terminal-track-info small {
+  color: #6f8878;
+}
+
+.terminal-lyric-preview {
+  min-height: 52px;
+  padding: 7px 8px;
+  border: 0;
+}
+
+.terminal-lyric-preview::before {
+  display: block;
+  width: 28px;
+  height: 1px;
+  margin: 0 auto 7px;
+  background: rgb(155 198 108 / 36%);
+  content: "";
+}
+
+.terminal-lyric-preview p {
+  color: #ebe8da;
+  font-size: 15px;
+}
+
+.terminal-lyric-preview span {
+  color: #8ba391;
+}
+
+.terminal-controls--primary {
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.3fr) minmax(0, 0.78fr);
+  gap: 7px;
+  padding: 8px 0;
+  border-top: 1px solid rgb(139 163 145 / 18%);
+  border-bottom: 1px solid rgb(139 163 145 / 18%);
+}
+
+.terminal-controls--primary .terminal-key {
+  min-height: 42px;
+  border: 1px solid rgb(139 163 145 / 24%);
+  background: transparent;
+}
+
+.terminal-controls--primary .terminal-key:hover,
+.terminal-controls--primary .terminal-key:focus-visible {
+  border-color: rgb(155 198 108 / 60%);
+  background: rgb(37 63 48 / 24%);
+}
+
+.terminal-key--emphasis,
+.terminal-controls--primary .terminal-key--emphasis {
+  border-color: #9bc66c;
+  background: #9bc66c;
+  color: #07110d;
+}
+
+.terminal-key--emphasis strong,
+.terminal-key--emphasis span {
+  color: #07110d;
+}
+
+.terminal-key--emphasis:hover,
+.terminal-key--emphasis:focus-visible,
+.terminal-controls--primary .terminal-key--emphasis:hover,
+.terminal-controls--primary .terminal-key--emphasis:focus-visible {
+  border-color: #c4e28f;
+  background: #c4e28f;
+  color: #07110d;
+}
+
+.terminal-track-meta {
+  gap: 5px;
+}
+
+.terminal-track-meta__mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8ba391;
+  letter-spacing: 0.08em;
+}
+
+.terminal-track-meta__mode i,
+.terminal-track-meta__mode strong {
+  font: inherit;
+  font-style: normal;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.terminal-track-meta__mode i {
+  color: #5f7668;
+}
+
+.terminal-track-meta__mode strong.is-active {
+  color: #9bc66c;
+}
+
+.terminal-controls--secondary,
+.terminal-controls--panel {
+  row-gap: 1px;
+  column-gap: 12px;
+}
+
+.terminal-controls--secondary .terminal-key,
+.terminal-controls--panel .terminal-key {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  min-height: 27px;
+  padding: 5px 0;
+  border: 0;
+  border-bottom: 1px solid rgb(139 163 145 / 13%);
+  background: transparent;
+}
+
+.terminal-controls--secondary .terminal-key strong,
+.terminal-controls--panel .terminal-key strong {
+  color: #9bc66c;
+}
+
+.terminal-controls--secondary .terminal-key span,
+.terminal-controls--panel .terminal-key span {
+  color: #789082;
+}
+
+.terminal-controls--secondary .terminal-key:hover,
+.terminal-controls--secondary .terminal-key:focus-visible,
+.terminal-controls--secondary .terminal-key--active,
+.terminal-controls--panel .terminal-key:hover,
+.terminal-controls--panel .terminal-key:focus-visible {
+  border-color: rgb(155 198 108 / 44%);
+  background: transparent;
+}
+
+.terminal-controls--secondary .terminal-key:hover span,
+.terminal-controls--secondary .terminal-key:focus-visible span,
+.terminal-controls--secondary .terminal-key--active span,
+.terminal-controls--panel .terminal-key:hover span,
+.terminal-controls--panel .terminal-key:focus-visible span {
+  color: #ebe8da;
+}
+
+.terminal-up-next {
+  display: grid;
+  align-content: start;
+  margin-top: 0;
+  border-top: 1px solid rgb(139 163 145 / 24%);
+  border-bottom: 1px solid rgb(139 163 145 / 16%);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.terminal-up-next__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  color: #9bc66c;
+}
+
+.terminal-up-next__heading small {
+  overflow: hidden;
+  color: #5f7668;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-up-next__list {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.terminal-up-next__item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1.35fr) minmax(72px, 0.9fr);
+  align-items: center;
+  gap: 8px;
+  min-height: clamp(30px, 4vh, 42px);
+  border-top: 1px solid rgb(139 163 145 / 11%);
+  color: #789082;
+}
+
+.terminal-up-next__item:nth-child(n + 3) {
+  display: none;
+}
+
+.terminal-up-next__item span,
+.terminal-up-next__item strong,
+.terminal-up-next__item small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-up-next__item span {
+  color: #5f7668;
+}
+
+.terminal-up-next__item strong {
+  color: #8ba391;
+  font-weight: 500;
+}
+
+.terminal-up-next__item small {
+  color: #5f7668;
+  font: inherit;
+  text-align: right;
+}
+
+.terminal-up-next__item--lead span,
+.terminal-up-next__item--lead strong {
+  color: #9bc66c;
+}
+
+.terminal-up-next__status {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  border-top: 1px solid rgb(139 163 145 / 11%);
+  color: #789082;
+}
+
+@media (min-height: 650px) {
+  .terminal-up-next:not(.terminal-up-next--status) {
+    flex: 1 1 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .terminal-up-next:not(.terminal-up-next--status) .terminal-up-next__list {
+    grid-auto-rows: minmax(42px, 1fr);
+  }
+
+  .terminal-up-next__item:nth-child(n + 3) {
+    display: grid;
+  }
+}
+
+.terminal-panel__heading span::after {
+  color: #5f7668;
+  content: " //";
+}
+
+@media (max-height: 649px) {
+  .terminal-vinyl {
+    width: min(50vw, 180px);
+  }
+
+  .terminal-track-info h1 {
+    font-size: 24px;
+  }
+
+  .terminal-controls--primary {
+    padding-block: 6px;
+  }
+
+  .terminal-up-next__heading {
+    min-height: 24px;
+  }
+
+  .terminal-up-next__item {
+    min-height: 28px;
+  }
+}

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["editables==0.6", "hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qqmusic-gui-provider"
+version = "0.1.0"
+description = "Private NDJSON provider process for QQ Music GUI"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+dependencies = [
+  "qqmusic-api-python==0.6.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "jsonschema==4.25.1",
+  "mypy==1.17.1",
+  "pyinstaller==6.21.0",
+  "pytest==8.4.1",
+  "ruff==0.12.8",
+]
+
+[project.scripts]
+qqmusic-provider = "qqmusic_provider.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["qqmusic_provider"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers -p no:cacheprovider"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [".cache", ".tmp"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+files = ["qqmusic_provider"]

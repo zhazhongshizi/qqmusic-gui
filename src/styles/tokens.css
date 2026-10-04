@@ -1,0 +1,58 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --vinyl: #111410;
+  --vinyl-raised: #171b16;
+  --canopy: #19362b;
+  --canopy-soft: #213e33;
+  --paper: #f1ebdd;
+  --paper-muted: #c9c5b9;
+  --lichen: #b8c77a;
+  --lichen-deep: #8ea054;
+  --patina: #909e94;
+  --clay: #c97a62;
+  --line: rgb(130 144 134 / 25%);
+  --surface: rgb(241 235 221 / 4%);
+  --shadow: 0 24px 70px rgb(0 0 0 / 32%);
+
+  --font-display: Georgia, FangSong, STFangsong, "Songti SC", SimSun, serif;
+  --font-body: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --font-data: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+
+  --player-height: 116px;
+  --header-height: 72px;
+  --radius-small: 8px;
+  --radius-medium: 14px;
+  --focus-ring: 0 0 0 3px rgb(184 199 122 / 88%);
+
+  /* Cover-driven dynamic atmosphere tokens */
+  --cover-primary: rgb(120 149 117);
+  --cover-vibrant: rgb(184 199 122);
+  --cover-ambient: rgb(25 54 43);
+  --cover-top: rgb(33 62 51);
+  --cover-glow-intensity: 1;
+  --cover-blend-cap: 0.28;
+
+  /* Layered cover atmosphere: the cap is applied again at every mix point. */
+  --cover-glow-sky-alpha: 0.16;
+  --cover-glow-side-alpha: 0.14;
+  --cover-glow-core-alpha: 0.22;
+  --cover-glow-bottom-alpha: 0.16;
+  --cover-glow-motion-distance: 7px;
+  --cover-glow-motion-duration: 16s;
+  --cover-glow-motion-opacity: 0.08;
+}
+
+/* Shared normal-mode tokens for both the main document and detached tray window. */
+:root {
+  --normal-font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --normal-paper: #f7f8fc;
+  --normal-muted: #d2d8e1;
+  --normal-subtle: #aeb9c8;
+  --normal-panel: #252e3c;
+  --normal-edge: rgb(255 255 255 / 23%);
+  --normal-fill: rgb(30 36 48 / 82%);
+}

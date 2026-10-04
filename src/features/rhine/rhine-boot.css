@@ -1,0 +1,395 @@
+/* Opening graphics and frame styles adapted from RhineLabUI (MIT). */
+.rhine-mode { position: relative; }
+.rhine-boot { position: absolute; inset: 0; z-index: 20; overflow: hidden; background: #e8e5e1; color: #080a08; }
+.rhine-boot-stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: center; pointer-events: none; }
+.rhine-boot-stage * { box-sizing: border-box; }
+.rhine-boot-stage h1, .rhine-boot-stage p { margin: 0; }
+.rhine-boot-skip { position: absolute; right: 28px; top: 70px; border: 0; padding: 12px; background: transparent; font: 12px Consolas, monospace; }
+.rhine-boot-window { position: absolute; right: 12px; top: 12px; }
+.rhine-boot-stage .brand {
+  position: absolute;
+  left: 59px;
+  top: 114px;
+  z-index: 5;
+  line-height: 1;
+  user-select: none;
+  width: 270px;
+  white-space: nowrap;
+}
+.rhine-boot-stage .brand h1 {
+  font-size: 44px;
+  letter-spacing: 2.324px;
+  line-height: 48px;
+  margin: 0;
+  font-weight: 750;
+}
+.rhine-boot-stage .brand > div {
+  font-size: 19px;
+  line-height: 23px;
+  letter-spacing: 0.587px;
+  font-weight: 600;
+}
+.rhine-boot-stage .brand p {
+  margin: 0;
+  font-size: 35px;
+  line-height: 40px;
+  letter-spacing: 0;
+  word-spacing: 0;
+  display: flex;
+  justify-content: space-between;
+}
+.rhine-boot-stage .brand p b {
+  font-weight: 750;
+  letter-spacing: 3px;
+}
+.rhine-boot-stage .brand-analysis {
+  position: relative;
+  display: block;
+  width: 189px;
+  height: 40px;
+}
+.rhine-boot-stage .brand-analysis > span {
+  position: absolute;
+  top: 0;
+  letter-spacing: 0;
+  font-kerning: none;
+}
+.rhine-boot-stage .powered {
+  position: absolute;
+  right: 59px;
+  bottom: 108px;
+  font-size: 18px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 24px;
+}
+.rhine-boot-stage .powered b {
+  font-weight: 750;
+}
+.rhine-boot-stage .powered i {
+  height: 6px;
+  width: 25px;
+  background: #090a08;
+  display: inline-block;
+  margin-left: 11px;
+}
+.rhine-boot-stage .boot-background {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at 51% 48%,
+    #e7e7e1 0%,
+    #e3e1dc 76%,
+    #e4dfdb 100%
+  );
+  transition: none;
+  pointer-events: none;
+}
+.rhine-boot-stage .boot-background svg {
+  width: 100%;
+  height: 100%;
+  opacity: 0.15;
+  filter: blur(2px);
+}
+.rhine-boot-stage .boot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.rhine-boot-stage .boot-logo {
+  position: absolute;
+  width: 296px;
+  height: 177px;
+  left: 518px;
+  top: 462px;
+  transition: none;
+  opacity: 0;
+}
+.rhine-boot-stage .boot-logo svg {
+  width: 100%;
+  height: 100%;
+}
+.rhine-boot-stage .auth-status {
+  position: absolute;
+  left: 931px;
+  top: 529px;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+  opacity: 0;
+}
+.rhine-boot-stage .auth-status > span:first-child {
+  font-size: 14px;
+}
+.rhine-boot-stage .auth-status i {
+  width: 3px;
+  height: 22px;
+  background: #282b26;
+  animation: blink 0.8s steps(1) infinite;
+}
+.rhine-boot-stage .access-text {
+  position: absolute;
+  top: 532px;
+  left: 800px;
+  width: 420px;
+  text-align: left;
+  font-size: 18px;
+  opacity: 0;
+}
+.rhine-boot-stage .scan {
+  position: absolute;
+  left: 410px;
+  top: -10px;
+  width: 1100px;
+  height: 1100px;
+  opacity: 0;
+  transform: scale(0.82);
+  transition:
+    transform 1.6s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.6s;
+}
+.rhine-boot-stage .scan svg {
+  width: 100%;
+  height: 100%;
+}
+.rhine-boot-stage .scan > span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 25px;
+}
+.rhine-boot-stage .scan-track {
+  stroke: #f7f5f0;
+  stroke-width: 8;
+}
+.rhine-boot-stage .scan-ring {
+  stroke: #aaa9a0;
+  stroke-width: 8;
+  transform-origin: center;
+  stroke-dasharray: 2400 900;
+}
+.rhine-boot-stage .ring-one {
+  animation: orbit 8s linear infinite;
+}
+.rhine-boot-stage .ring-two {
+  stroke-width: 9;
+  stroke-dasharray: 590 500;
+  animation: orbit 4s linear infinite reverse;
+}
+.rhine-boot-stage .ring-three {
+  stroke: #f4f3eb;
+  stroke-width: 3;
+  stroke-dasharray: 600 200;
+  animation: orbit 16s linear infinite;
+}
+.rhine-boot-stage .scan-nodes {
+  fill: #e7c69b;
+  filter: drop-shadow(0 0 15px #ddb788);
+  transform-origin: center;
+  animation: orbit 8s linear infinite;
+}
+.rhine-boot-stage .welcome {
+  position: absolute;
+  top: 403px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 55px;
+  font-weight: 700;
+  line-height: 1.05;
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.7s,
+    transform 1s;
+}
+.rhine-boot-stage .welcome strong {
+  display: inline-block;
+  background: #080a08;
+  color: #ece9e4;
+  padding: 4px 10px 6px;
+  font-size: 51px;
+  line-height: 1;
+}
+.rhine-boot-stage .welcome-logo {
+  width: 203px;
+  height: 121px;
+  margin: 58px auto 0;
+}
+.rhine-boot-stage .welcome-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.rhine-boot-stage .brand,
+.rhine-boot-stage .powered,
+.rhine-boot-stage .boot * {
+  transition: none;
+  animation: none;
+}
+.rhine-boot-stage .auth-status {
+  animation: none;
+}
+.rhine-boot-stage .auth-status i {
+  display: none;
+}
+.rhine-boot-stage .boot-white {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+}
+.rhine-boot-stage .scan {
+  inset: 0;
+  width: 1920px;
+  height: 1080px;
+  transform: none;
+  transition: none;
+}
+.rhine-boot-stage .scan > span {
+  font-size: 22px;
+  white-space: nowrap;
+  padding-left: 0;
+}
+.rhine-boot-stage .welcome {
+  left: 720px;
+  top: 403px;
+  width: 480px;
+  height: 340px;
+  transform-origin: 50% 44%;
+  transition: none;
+}
+.rhine-boot-stage .welcome-heading {
+  position: relative;
+  z-index: 1;
+  line-height: 65px;
+  font-size: 55px;
+  white-space: nowrap;
+}
+.rhine-boot-stage .welcome-panel {
+  position: absolute;
+  top: -59px;
+  left: 5px;
+  width: 470px;
+  height: 392px;
+  background: #080a08;
+}
+.rhine-boot-stage .welcome-company {
+  position: absolute;
+  top: 67px;
+  left: 35px;
+  width: 410px;
+  height: 60px;
+}
+.rhine-boot-stage .welcome-company strong {
+  display: block;
+  position: absolute;
+  inset: 0;
+  padding: 5px 8px;
+  background: transparent;
+  color: #080a08;
+  font-size: 48px;
+  line-height: 50px;
+  white-space: nowrap;
+  letter-spacing: -0.5px;
+}
+.rhine-boot-stage .welcome-company .welcome-highlight {
+  background: #080a08;
+  color: #eeede8;
+}
+.rhine-boot-stage .welcome-database {
+  position: absolute;
+  top: 134px;
+  left: 0;
+  width: 100%;
+  font-size: 36px;
+  line-height: 43px;
+  white-space: nowrap;
+}
+.rhine-boot-stage .welcome-logo {
+  position: absolute;
+  top: 187px;
+  left: 138.5px;
+  margin: 0;
+}
+.rhine-boot-stage .boot-phrase {
+  display: inline-flex;
+  height: 1em;
+  align-items: stretch;
+  vertical-align: -0.16em;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.rhine-boot-stage .boot-phrase-letter {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  height: 1em;
+  margin-inline-end: var(--boot-phrase-tracking, 0px);
+}
+.rhine-boot-stage .boot-font-letter::before {
+  content: attr(data-letter);
+  position: absolute;
+  left: 0;
+
+  top: -0.121em;
+  font-family: var(--boot-webfont-family);
+  font-size: inherit;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+  font-kerning: none;
+  line-height: 1;
+  white-space: pre;
+}
+.rhine-boot-stage .boot-phrase-letter:last-child { margin-inline-end: 0; }
+.rhine-boot-stage .boot-phrase[hidden],
+.rhine-boot-stage .boot-phrase-letter[hidden] { display: none; }
+.rhine-boot-stage .boot-phrase svg.boot-letter-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: currentColor;
+}
+.rhine-boot-stage .boot-phrase-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: pre;
+}
+.rhine-boot-stage .boot-lettering-fallback > .boot-phrase-label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}
+.rhine-boot-stage #auth-message { --boot-phrase-tracking: -0.00909em; }
+.rhine-boot-stage .auth-status { top: 527px; gap: 10px; font-size: 21.35px; }
+.rhine-boot-stage .welcome-company { --boot-phrase-tracking: -0.5px; }
+.rhine-boot-stage .brand h1 {
+  position: relative;
+  height: 48px;
+  font-size: 50.75px;
+  letter-spacing: 0;
+  --boot-phrase-tracking: 1px;
+}
+.rhine-boot-stage .brand h1 > .boot-phrase {
+  position: absolute;
+  left: 0;
+  top: 1.425px;
+}
+.rhine-boot-stage [data-layout="opening"][data-opening-portrait="true"] .scan > span {
+  --boot-phrase-tracking: 1px !important;
+}
