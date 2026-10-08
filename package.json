@@ -1,6 +1,6 @@
 {
   "name": "qqmusic-gui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A local-first Windows desktop client for QQ Music.",
   "license": "GPL-3.0-or-later",
   "private": true,

@@ -13,7 +13,7 @@
 </div>
 
 
-> 当前版本：**1.0.0**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
+> 当前版本：**1.0.1**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
 
 ## 功能
 
@@ -64,7 +64,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 `QQ-Music-GUI_1.0.0_x64-portable_*.zip`。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 `QQ-Music-GUI_1.0.1_x64-portable.zip`。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider` 文件夹。
 3. 运行 `qqmusic-gui.exe`。发行版包含 Python Provider，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。
@@ -81,6 +81,7 @@
 - 登录后查看歌单，或搜索歌曲、专辑与歌手。队列、喜欢与歌单写入沿用该账号。
 - 可播放性受账号权益、版权、地区与服务端条件限制；无损优先不保证每首歌均有无损资源。
 - MV 补播可在设置中关闭。MV 与原曲不同步时，可调整歌词偏移。
+- 莱茵“设置 → 播放设置 → 默认音质”可选择无损优先、高品质 320k 或标准 128k；与普通界面共用并自动保存，从下次加载歌曲生效。
 
 ### 界面与磁带操作
 

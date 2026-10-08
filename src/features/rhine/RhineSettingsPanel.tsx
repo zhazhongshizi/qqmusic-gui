@@ -10,6 +10,9 @@ import type { ArchiveRenderer, RhineFrameLimit, RhineSettings } from "./rhineSet
 import { MvFallbackSetting } from "../player/MvPlaybackSettings";
 import { SmartShuffleToggle } from "../player/SmartShuffleToggle";
 
+import { isPlaybackQuality, PLAYBACK_QUALITY_OPTIONS } from "../../contracts/settings";
+import { playerActions, usePlayerSelector } from "../player/playerStore";
+
 type Choice = { value: string | number; label: string; disabled?: boolean };
 type SettingsSection = "quality" | "details" | "playback" | "account";
 
@@ -77,6 +80,28 @@ const sections: readonly { id: SettingsSection; label: string; index: string }[]
   { id: "playback", label: "播放设置", index: "03" },
   { id: "account", label: "账号与界面", index: "04" },
 ];
+
+function DefaultQualitySetting() {
+  const quality = usePlayerSelector(snapshot => snapshot.defaultQuality);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function change(value: string) {
+    if (saving || !isPlaybackQuality(value) || value === quality) return;
+    setSaving(true);
+    setError(false);
+    try { await playerActions.setDefaultQuality(value); }
+    catch { setError(true); }
+    finally { setSaving(false); }
+  }
+
+  return <>
+    <ChoiceField label="默认音质" value={quality} choices={PLAYBACK_QUALITY_OPTIONS}
+      disabled={saving} onChange={value => void change(value)} />
+    <p className="rhine-settings-note">{saving ? "正在保存默认音质…" : "与普通界面共用，从下次加载歌曲生效。桌面版自动保存，下次启动沿用；实际音质取决于歌曲资源和账号权限。"}</p>
+    {error && <p className="rhine-smart-shuffle-error" role="alert">默认音质保存失败，请重试</p>}
+  </>;
+}
 
 export function RhineSettingsPanel({
   settings,
@@ -192,6 +217,7 @@ export function RhineSettingsPanel({
           <div className="rhine-settings-section-heading">
             <div><p className="rhine-eyebrow">03 / PLAYBACK</p><h2 id={titleId}>播放设置</h2></div>
           </div>
+          <DefaultQualitySetting />
           <SmartShuffleToggle presentation="rhine" />
         </section>}
 
