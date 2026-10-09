@@ -1,0 +1,24 @@
+.local-manager-trigger { white-space: nowrap; }
+.local-manager { color: #26392e; background: #f3f3ed; border: 1px solid #809285; border-radius: 6px; width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 24px; box-shadow: 0 20px 80px #10201555; }
+.local-manager::backdrop { background: #111c18aa; }
+.local-manager header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.local-manager h2 { margin: 8px 0; font-size: 28px; }
+.local-manager p { font-size: 13px; line-height: 1.7; }
+.local-manager button, .local-manager select { color: inherit; background: #ffffff80; border: 1px solid #9aaa9e; border-radius: 3px; padding: 9px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.local-manager button:disabled, .local-manager select:disabled { opacity: .45; cursor: default; }
+.local-manager button:focus-visible, .local-manager select:focus-visible { outline: 2px solid #397254; outline-offset: 3px; }
+.local-manager-import, .local-manager-actions { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.local-manager-import label { display: grid; gap: 8px; font-size: 13px; flex: 1; }
+.local-manager select { max-width: 100%; }
+.local-manager-hint { color: #526458; }
+.local-manager-directories { display: grid; gap: 12px; margin: 20px 0; }
+.local-manager-directory { padding: 16px; border: 1px solid #b8c4ba; border-left: 3px solid #4f725c; min-width: 0; }
+.local-manager-directory strong { display: block; overflow-wrap: anywhere; font-size: 14px; }
+.local-manager-directory p { margin: 8px 0 4px; }
+.local-manager-directory small { color: #5c6a60; }
+.local-manager-actions { margin-top: 12px; }
+.local-manager-progress { border-top: 1px solid #a9b6ab; padding-top: 8px; }
+.local-manager-progress li { font-size: 12px; overflow-wrap: anywhere; margin-top: 8px; }
+.local-manager-empty { padding: 30px 0; text-align: center; }
+.local-library-tools { display: flex; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 540px) { .local-manager { padding: 16px; } .local-manager-import { align-items: stretch; flex-direction: column; } }

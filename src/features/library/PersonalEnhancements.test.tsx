@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SavedQueues, PersonalLibrary } from "./PersonalLibrary";
-import { ListeningStatistics, statisticsSince } from "./ListeningStatistics";
+import { ListeningRecords as ListeningStatistics, statisticsSince } from "./ListeningStatistics";
 import { installPlaybackTransport } from "../../backend/playbackTransport";
 import { resetPlayerFixture } from "../player/playerStore";
 const actions = vi.hoisted(() => vi.fn());

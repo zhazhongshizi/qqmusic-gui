@@ -81,6 +81,11 @@ async function dispatchRemote(command: string, payload: Record<string, unknown>)
     const value = await readJson("/api/library", { command, ...payload });
     const action = (payload.request as { action?: string }).action;
     if (action === "loadQueue" || action === "restoreQueue") latest = mergePlaybackSession(latest, parsePlaybackSessionSnapshot(value));
+    if (action === "memoryTapeEnqueue" && latest) {
+      const result=value as {queue:unknown};
+      latest={...latest,queue:newestQueue(latest.queue,parseQueueSnapshot(result.queue))};
+      return {...result,queue:latest.queue};
+    }
     return value;
   }
   if (command === "catalog_song_artists") {

@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+pub mod index;
+
 #[cfg(windows)]
 use windows::{
     core::HSTRING,
@@ -28,7 +30,7 @@ const MAX_SIDECAR_BYTES: usize = 4 * 1024;
 const SIDECAR_SCHEMA_VERSION: u16 = 1;
 const TEMPORARY_FILE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LocalMusicFormat {
     Mp3,
@@ -136,7 +138,7 @@ impl FromStr for LocalTrackId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalMusicTrack {
     pub id: String,
@@ -145,6 +147,12 @@ pub struct LocalMusicTrack {
     pub album: String,
     pub duration_ms: u64,
     pub format: LocalMusicFormat,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referenced: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_cache_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -215,6 +223,8 @@ impl std::error::Error for LocalMusicError {}
 pub struct LocalMusicService {
     root_override: Option<PathBuf>,
     import_lock: Mutex<()>,
+    scan: Mutex<index::ScanProgress>,
+    cancel_scan: std::sync::atomic::AtomicBool,
 }
 
 /// A prepared, ID-scoped local track deletion.
@@ -294,6 +304,8 @@ impl LocalMusicService {
         Ok(Self {
             root_override: None,
             import_lock: Mutex::new(()),
+            scan: Mutex::new(index::ScanProgress::default()),
+            cancel_scan: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -301,6 +313,8 @@ impl LocalMusicService {
         Self {
             root_override: Some(root),
             import_lock: Mutex::new(()),
+            scan: Mutex::new(index::ScanProgress::default()),
+            cancel_scan: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -326,8 +340,8 @@ impl LocalMusicService {
     ) -> Result<LocalMusicImportResult, LocalMusicError> {
         let _import_guard = self
             .import_lock
-            .lock()
-            .map_err(|_| LocalMusicError::StorageUnavailable)?;
+            .try_lock()
+            .map_err(|_| LocalMusicError::StorageConflict)?;
         let root = self.ensure_writable()?;
         self.cleanup_temporary_files(&root);
         let mut result = LocalMusicImportResult {
@@ -363,8 +377,8 @@ impl LocalMusicService {
     ) -> Result<LocalMusicDeleteGuard<'_>, LocalMusicError> {
         let service_lock = self
             .import_lock
-            .lock()
-            .map_err(|_| LocalMusicError::StorageUnavailable)?;
+            .try_lock()
+            .map_err(|_| LocalMusicError::StorageConflict)?;
         let id = LocalTrackId::parse(value)?;
         let configured_root = self.root()?;
         let root = self.validate_root(&configured_root, false)?;
@@ -440,6 +454,7 @@ impl LocalMusicService {
         };
         let mut tracks = Vec::new();
         let mut warning_count = 0usize;
+        let catalog = index::open(&root)?;
         let entries = fs::read_dir(&root).map_err(|_| LocalMusicError::StorageUnavailable)?;
         for entry in entries {
             let entry = match entry {
@@ -466,11 +481,12 @@ impl LocalMusicService {
                 warning_count += 1;
                 continue;
             }
-            match self.read_track(&root, &path, &id, None) {
+            match self.cached_managed_track(&catalog, &root, &path, &id, &metadata) {
                 Ok(track) => tracks.push(track),
                 Err(_) => warning_count += 1,
             }
         }
+        self.merge_indexed_tracks(&root, &mut tracks, &mut warning_count)?;
         tracks.sort_by_key(|track| {
             (
                 track.title.to_lowercase(),
@@ -489,6 +505,9 @@ impl LocalMusicService {
         let configured_root = self.root()?;
         let root = self.validate_root(&configured_root, false)?;
         let path = root.join(id.filename());
+        if !path.exists() {
+            return self.resolve_reference(&root, value);
+        }
         let metadata = fs::symlink_metadata(&path).map_err(|_| LocalMusicError::FileMissing)?;
         if !metadata.file_type().is_file() || is_reparse_point(&metadata) {
             return Err(LocalMusicError::FileMissing);
@@ -500,7 +519,38 @@ impl LocalMusicService {
         Ok(canonical)
     }
 
+    pub fn embedded_cover(&self, id: &str) -> Result<crate::cover::CoverPayload, LocalMusicError> {
+        let path = self.resolve_media_file(id)?;
+        let tagged = Probe::open(path)
+            .and_then(|p| Ok(p.guess_file_type()?))
+            .and_then(|p| p.read())
+            .map_err(|_| LocalMusicError::MetadataUnreadable)?;
+        let tag = tagged
+            .primary_tag()
+            .or_else(|| tagged.first_tag())
+            .ok_or(LocalMusicError::MetadataUnreadable)?;
+        let picture = tag
+            .pictures()
+            .iter()
+            .filter(|p| supported_picture(p.data()).is_some())
+            .min_by_key(|p| p.pic_type() != lofty::picture::PictureType::CoverFront)
+            .ok_or(LocalMusicError::MetadataUnreadable)?;
+        Ok(crate::cover::CoverPayload {
+            mime_type: supported_picture(picture.data()).unwrap().into(),
+            bytes: picture.data().to_vec(),
+        })
+    }
+
     fn import_one(&self, root: &Path, source: &Path) -> Result<ImportOutcome, LocalMusicError> {
+        self.import_one_with_cancel(root, source, None)
+    }
+
+    fn import_one_with_cancel(
+        &self,
+        root: &Path,
+        source: &Path,
+        cancel: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<ImportOutcome, LocalMusicError> {
         let metadata = fs::symlink_metadata(source).map_err(|_| LocalMusicError::InvalidFile)?;
         if !metadata.file_type().is_file() || is_reparse_point(&metadata) {
             return Err(LocalMusicError::InvalidFile);
@@ -523,7 +573,7 @@ impl LocalMusicService {
         {
             return Err(LocalMusicError::CodecUnavailable);
         }
-        let digest = copy_and_hash(source, root)?;
+        let digest = copy_and_hash(source, root, cancel)?;
         let id = LocalTrackId { digest, format };
         let part = part_path(root, &id);
         // Re-inspect the bytes that were actually copied. This closes the gap
@@ -578,6 +628,9 @@ impl LocalMusicService {
             album: normalize_text(inspected.album.as_deref().unwrap_or(""), true),
             duration_ms: inspected.duration_ms,
             format,
+            available: None,
+            referenced: None,
+            cover_cache_key: inspected.has_cover.then(|| id.as_string()),
         }))
     }
 
@@ -601,6 +654,9 @@ impl LocalMusicService {
             album: normalize_text(inspected.album.as_deref().unwrap_or(""), true),
             duration_ms: inspected.duration_ms,
             format: id.format,
+            available: None,
+            referenced: None,
+            cover_cache_key: inspected.has_cover.then(|| id.as_string()),
         })
     }
 
@@ -687,6 +743,7 @@ struct InspectedAudio {
     album: Option<String>,
     duration_ms: u64,
     ogg_codec: Option<OggCodec>,
+    has_cover: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -713,6 +770,11 @@ fn inspect_audio(
     let duration_ms = u64::try_from(duration).map_err(|_| LocalMusicError::MetadataUnreadable)?;
     let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
     Ok(InspectedAudio {
+        has_cover: tag.is_some_and(|tag| {
+            tag.pictures()
+                .iter()
+                .any(|p| supported_picture(p.data()).is_some())
+        }),
         title: tag
             .and_then(|value| value.title())
             .map(|value| value.into_owned())
@@ -732,6 +794,21 @@ fn inspect_audio(
             _ => None,
         },
     })
+}
+
+fn supported_picture(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() > crate::cover::MAX_COVER_BYTES {
+        return None;
+    }
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
 }
 
 #[cfg(windows)]
@@ -768,7 +845,11 @@ fn ogg_codec_available(_codec: OggCodec) -> bool {
     false
 }
 
-fn copy_and_hash(source: &Path, root: &Path) -> Result<[u8; 32], LocalMusicError> {
+fn copy_and_hash(
+    source: &Path,
+    root: &Path,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<[u8; 32], LocalMusicError> {
     let extension = source
         .extension()
         .and_then(OsStr::to_str)
@@ -786,6 +867,9 @@ fn copy_and_hash(source: &Path, root: &Path) -> Result<[u8; 32], LocalMusicError
     let mut copied = 0u64;
     let result = (|| -> io::Result<()> {
         loop {
+            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
+                return Err(io::Error::other("scan cancelled"));
+            }
             let count = reader.read(&mut buffer)?;
             if count == 0 {
                 break;

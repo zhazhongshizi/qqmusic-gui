@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $repositoryRoot 'src-tauri'
+& (Join-Path $PSScriptRoot 'assert-version-sources.ps1') -RepositoryRoot $repositoryRoot
 $targetReleaseRoot = Join-Path $tauriRoot "target\$Target\release"
 $applicationPath = Join-Path $targetReleaseRoot 'qqmusic-gui.exe'
 $releaseProviderRoot = Join-Path $targetReleaseRoot 'provider'
@@ -97,10 +98,13 @@ Copy-Item -LiteralPath $releaseProviderRoot -Destination $portableRoot -Recurse
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination $portableRoot
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination $portableRoot
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'README.md') -Destination $portableRoot
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'UPGRADE.md') -Destination $portableRoot
 
 $portableProviderRoot = Join-Path $portableRoot 'provider'
 & (Join-Path $PSScriptRoot 'verify-provider-manifest.ps1') -BundleRoot $portableProviderRoot
 & (Join-Path $PSScriptRoot 'assert-release-provider.ps1') -BundleRoot $portableProviderRoot
+& (Join-Path $PSScriptRoot 'test-portable-contents.ps1') -PackageRoot $portableRoot
+& (Join-Path $PSScriptRoot 'test-release-smoke.ps1') -PackageRoot $portableRoot
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory(

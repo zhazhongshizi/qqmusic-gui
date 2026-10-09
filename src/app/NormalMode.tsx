@@ -10,6 +10,7 @@ import { SmartShuffleToggle } from "../features/player/SmartShuffleToggle";
 import { MvFallbackSetting } from "../features/player/MvPlaybackSettings";
 import { RemoteControlSettings } from "../features/player/RemoteControlSettings";
 import { LoggingSettings } from "../features/player/LoggingSettings";
+import UpdateSettings from "../features/player/UpdateSettings";
 import { QueueDrawer } from "../features/player/QueueDrawer";
 import { ListeningStage } from "../features/stage/ListeningStage";
 import { CachedGlow } from "../features/stage/CachedGlow";
@@ -173,7 +174,7 @@ function StageSettings({
       menuRootRef.current?.querySelectorAll<HTMLButtonElement>(
         "button:not(:disabled)",
       ) ?? [],
-    ).filter((item) => item.role === "menuitemradio" || item.role === "menuitemcheckbox");
+    ).filter((item) => item.role === "menuitemradio" || item.role === "menuitemcheckbox" || item.role === "menuitem");
     const currentIndex = items.findIndex((item) => item === document.activeElement);
     let nextIndex: number | null = null;
 
@@ -254,6 +255,7 @@ function StageSettings({
         <MvFallbackSetting />
         <RemoteControlSettings />
         <LoggingSettings />
+        <UpdateSettings />
         <div className="fixture-menu__divider" role="separator" />
         <span className="section-label" role="presentation">封面氛围</span>
         <button type="button" role="menuitemcheckbox" aria-checked={cachedGlow}

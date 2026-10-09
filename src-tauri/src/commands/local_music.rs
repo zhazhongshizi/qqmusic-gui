@@ -4,6 +4,21 @@ use crate::{
 };
 
 #[tauri::command]
+pub(crate) async fn local_music_catalog(
+    request: crate::local_music::index::CatalogRequest,
+    state: State<'_, AppState>,
+) -> Result<crate::local_music::index::CatalogStatus, PublicError> {
+    let service = state
+        .local_music
+        .clone()
+        .ok_or_else(local_music_unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || service.catalog(request))
+        .await
+        .map_err(|_| local_music_unavailable())?
+        .map_err(public_local_music_error)
+}
+
+#[tauri::command]
 pub(crate) async fn local_music_list(
     state: State<'_, AppState>,
 ) -> Result<LocalMusicListResult, PublicError> {

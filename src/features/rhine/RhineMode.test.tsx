@@ -82,8 +82,8 @@ it("图标导航保留完整名称，切换页面时只有当前入口显示短�
   render(<RhineMode {...props} />);
   await screen.findByRole("button", { name: /抽取档案/ });
   const nav = screen.getByRole("navigation", { name: "档案分类" });
-  const names = ["创建的歌单", "收藏的歌单", "搜索", "本地音乐", "最近播放", "资料库", "听歌统计", "设置"];
-  expect(within(nav).getAllByRole("button")).toHaveLength(8);
+  const names = ["创建的歌单", "收藏的歌单", "搜索", "本地音乐", "最近播放", "资料库", "听歌统计", "回忆磁带", "设置"];
+  expect(within(nav).getAllByRole("button")).toHaveLength(names.length);
   for (const name of names) {
     const button = within(nav).getByRole("button", { name });
     expect(button.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
@@ -96,6 +96,9 @@ it("图标导航保留完整名称，切换页面时只有当前入口显示短�
   fireEvent.click(within(nav).getByRole("button", { name: "最近播放" }));
   expect(chosen()).toEqual(["最近播放"]);
   expect(nav.querySelector(".rhine-nav-label")).toHaveTextContent("最近");
+  fireEvent.click(within(nav).getByRole("button", { name: "回忆磁带" }));
+  expect(chosen()).toEqual(["回忆磁带"]);
+  await screen.findByRole("heading", { name: "回忆磁带" });
   fireEvent.click(within(nav).getByRole("button", { name: "设置" }));
   expect(chosen()).toEqual(["设置"]);
   fireEvent.keyDown(await screen.findByRole("region", { name: "系统设置" }), { key: "Escape" });

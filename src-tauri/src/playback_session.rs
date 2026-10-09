@@ -461,6 +461,79 @@ impl PlaybackSession {
         let db = &self.queue.persistence;
         let error = |_| PlaybackSessionError::Queue(QueueError::PersistenceUnavailable);
         match request {
+            PersonalRequest::MemoryTapes { before } => {
+                return db
+                    .memory_tapes(before.as_deref(), crate::personal::now_ms())
+                    .map_err(error);
+            }
+            PersonalRequest::MemoryTape { month, offset } => {
+                let mut detail = db
+                    .memory_tape(&month, offset, crate::personal::now_ms())
+                    .map_err(error)?;
+                if let Some(songs) = detail["songs"].as_array_mut() {
+                    for song in songs {
+                        song["availability"] = serde_json::json!(
+                            self.memory_track_availability(song["id"].as_str().unwrap_or_default())
+                        );
+                    }
+                }
+                return Ok(detail);
+            }
+            PersonalRequest::MemoryTapeEnqueue { month, ids } => {
+                let mut tracks = db.memory_tape_tracks(&month, &ids).map_err(error)?;
+                let history = db.load_playback_history().map_err(error)?;
+                let existing = self.queue.snapshot();
+                let mut skipped = Vec::new();
+                tracks.retain(|track| {
+                    if self.memory_track_availability(&track.id) == "unavailable" {
+                        skipped.push(track.id.clone());
+                        false
+                    } else {
+                        true
+                    }
+                });
+                for track in &mut tracks {
+                    if let Some(current) = existing.items.iter().find(|t| t.id == track.id) {
+                        *track = current.clone();
+                    } else if let Some(old) = history.iter().find(|t| t.id == track.id) {
+                        track.album = old.album.clone();
+                        track.duration_ms = old.duration_ms;
+                        track.media_mid = old.media_mid.clone();
+                        track.cover_cache_key = old.cover_cache_key.clone();
+                    }
+                }
+                let accepted = tracks.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
+                // QueueService provides deduplication, capacity checks and atomic
+                // persistence. No playback request or history write occurs here.
+                let queue = if tracks.is_empty() {
+                    self.queue.snapshot()
+                } else {
+                    self.queue
+                        .enqueue_many(tracks)
+                        .map_err(PlaybackSessionError::Queue)?
+                };
+                return Ok(
+                    serde_json::json!({"queue":queue,"acceptedIds":accepted,"skippedIds":skipped}),
+                );
+            }
+            PersonalRequest::ListeningAnalytics {
+                start_date,
+                end_date,
+            } => {
+                let storage_available = self
+                    .listening_stats
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .storage_available;
+                let likes = self
+                    .smart_shuffle
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .analytics_likes();
+                return db
+                    .listening_analytics(&start_date, &end_date, likes.as_ref(), storage_available)
+                    .map_err(error);
+            }
             PersonalRequest::Statistics { since_ms } => {
                 let mut stats = self
                     .listening_stats
@@ -545,6 +618,29 @@ impl PlaybackSession {
             PersonalRequest::Collections => {}
         }
         db.personal_collections().map_err(error)
+    }
+
+    fn memory_track_availability(&self, id: &str) -> &'static str {
+        if id.starts_with("local_") {
+            if self
+                .local_music
+                .as_ref()
+                .is_some_and(|local| local.resolve_media_file(id).is_ok())
+            {
+                "local"
+            } else {
+                "unavailable"
+            }
+        } else if !id.is_empty()
+            && id.len() <= 128
+            && id
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        {
+            "online"
+        } else {
+            "unavailable"
+        }
     }
 
     fn switch_personal_queue(
@@ -2094,6 +2190,74 @@ mod tests {
             .unwrap();
         assert_eq!(restored["queue"]["items"][0]["id"], "other");
         assert_eq!(test.requests.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn memory_tape_enqueue_rechecks_files_deduplicates_and_never_rewrites_history() {
+        use crate::personal::PersonalRequest;
+        let mut test = TestSession::ended();
+        let media = test.root.join("local");
+        fs::create_dir_all(&media).unwrap();
+        let local_id = format!("local_{}_mp3", "a".repeat(64));
+        let path = media.join(format!("{}.mp3", "a".repeat(64)));
+        fs::write(&path, b"fixture").unwrap();
+        test.session.local_music = Some(Arc::new(LocalMusicService::new(media)));
+        let db = &test.session.queue.persistence;
+        let now = crate::personal::now_ms();
+        for id in ["tape-song", local_id.as_str()] {
+            db.record_listening(id, "Tape song", "Artist", 1000, true, now)
+                .unwrap();
+        }
+        let tapes = test
+            .session
+            .personal_library(PersonalRequest::MemoryTapes { before: None })
+            .unwrap();
+        let month = tapes["items"][0]["month"].as_str().unwrap().to_owned();
+        let detail = test
+            .session
+            .personal_library(PersonalRequest::MemoryTape {
+                month: month.clone(),
+                offset: 0,
+            })
+            .unwrap();
+        assert_eq!(
+            detail["songs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == local_id)
+                .unwrap()["availability"],
+            "local"
+        );
+        fs::remove_file(path).unwrap();
+        let history = db.listening_report().unwrap();
+        let collections = db.personal_collections().unwrap();
+        let player = test.session.snapshot().player;
+        let enqueue = || {
+            test.session
+                .personal_library(PersonalRequest::MemoryTapeEnqueue {
+                    month: month.clone(),
+                    ids: vec!["tape-song".into(), local_id.clone()],
+                })
+                .unwrap()
+        };
+        let result = enqueue();
+        assert_eq!(result["acceptedIds"], serde_json::json!(["tape-song"]));
+        assert_eq!(result["skippedIds"], serde_json::json!([local_id]));
+        let repeated = enqueue();
+        assert_eq!(result["queue"], repeated["queue"]);
+        assert_eq!(test.session.snapshot().player, player);
+        assert_eq!(test.requests.load(Ordering::SeqCst), 0);
+        assert_eq!(db.listening_report().unwrap(), history);
+        assert_eq!(db.personal_collections().unwrap(), collections);
+        assert!(test
+            .session
+            .personal_library(PersonalRequest::MemoryTapeEnqueue {
+                month,
+                ids: vec!["unseen-song".into()]
+            })
+            .is_err());
+        assert_eq!(test.session.queue.snapshot().items.len(), 3);
     }
 
     impl TestSession {

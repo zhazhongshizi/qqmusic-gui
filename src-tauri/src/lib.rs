@@ -8,9 +8,12 @@ pub mod device_identity;
 pub mod diagnostics;
 mod file_logging;
 pub mod library;
+mod listening_analytics;
 pub mod listening_stats;
 pub mod local_music;
 pub mod lyrics;
+mod memory_tapes;
+pub mod migration_guard;
 pub mod network_policy;
 pub mod organizer;
 pub mod persistence;
@@ -22,6 +25,7 @@ pub mod player;
 mod process_loopback;
 pub mod provider;
 pub mod queue;
+mod release_smoke;
 mod remote;
 pub mod smart_shuffle;
 pub(crate) mod smtc_artwork;
@@ -29,6 +33,7 @@ pub(crate) mod smtc_dynamic_lyrics;
 pub(crate) mod spectrum;
 #[cfg(all(windows, not(test)))]
 mod spectrum_service;
+pub mod updates;
 
 use std::{
     fs,
@@ -150,6 +155,7 @@ struct AppState {
     playback: Option<Arc<PlaybackController>>,
     playback_session: Option<Arc<PlaybackSession>>,
     local_music: Option<Arc<LocalMusicService>>,
+    updates: Option<Arc<updates::UpdateService>>,
     #[cfg(windows)]
     smtc_artwork: Option<Arc<SmtcArtworkCoordinator>>,
     #[cfg(windows)]
@@ -180,6 +186,7 @@ impl AppState {
             playback: None,
             playback_session: None,
             local_music: None,
+            updates: None,
             #[cfg(windows)]
             smtc_artwork: None,
             #[cfg(windows)]
@@ -222,8 +229,34 @@ impl AppState {
             .and_then(|root| CoverService::new(root).ok())
             .map(Arc::new);
         state.local_music = LocalMusicService::from_current_exe().ok().map(Arc::new);
-        state.queue = queue_service(app).map(Arc::new);
-        state.persistence = persistence_service(app).map(Arc::new);
+        if let (Some(data), Ok(exe)) = (application_data_directory(app), std::env::current_exe()) {
+            if let Some(directory) = exe.parent() {
+                let updates = Arc::new(updates::UpdateService::new(
+                    data.clone(),
+                    directory.to_path_buf(),
+                ));
+                updates.schedule_startup();
+                state.updates = Some(updates);
+            }
+            let database_path = data.join("state.sqlite3");
+            let migration_required =
+                migration_guard::existing_version(&database_path).is_ok_and(|version| {
+                    version.is_some_and(|v| v < persistence::LOCAL_SCHEMA_VERSION)
+                });
+            if migration_guard::approve_application(&database_path) {
+                state.queue = queue_service(app).map(Arc::new);
+                state.persistence = if state.queue.is_some() {
+                    persistence_service(app).map(Arc::new)
+                } else {
+                    None
+                };
+                if migration_required && state.queue.is_none() {
+                    rfd::MessageDialog::new().set_title("音乐数据升级未完成")
+                        .set_description("升级事务已撤销，原始数据与升级前快照保留。本次音乐数据功能暂不可用，请保留应用数据目录并检查数据库兼容性。")
+                        .set_level(rfd::MessageLevel::Error).show();
+                }
+            }
+        }
         if state.persistence.is_none() || state.queue.is_none() {
             file_logging::event("startup_storage_unavailable");
         }
@@ -242,10 +275,7 @@ impl AppState {
                 spectrum_enabled,
             )));
         }
-        let device_path = app
-            .path()
-            .app_data_dir()
-            .ok()
+        let device_path = application_data_directory(app)
             .and_then(|root| ProviderDevicePath::prepare(&root).ok());
         let Some(device_path) = device_path else {
             file_logging::event("startup_provider_device_unavailable");
@@ -265,8 +295,11 @@ impl AppState {
                 .provider = ProviderSnapshot::failed();
             return state;
         };
-        let credential_store: Arc<dyn credentials::CredentialStore> =
-            Arc::new(WindowsCredentialStore::new());
+        let credential_store: Arc<dyn credentials::CredentialStore> = if release_smoke::active() {
+            Arc::new(release_smoke::NoCredentials)
+        } else {
+            Arc::new(WindowsCredentialStore::new())
+        };
         let recovery = Arc::new(AuthRecoveryCoordinator::new(credential_store.clone()));
         let provider = match VerifiedProviderBundle::verify(provider_root)
             .and_then(|bundle| {
@@ -839,6 +872,9 @@ fn public_auth_error(error: AuthError) -> PublicError {
 
 #[cfg(windows)]
 fn provider_root(app: &tauri::AppHandle) -> Option<PathBuf> {
+    if release_smoke::active() {
+        return Some(std::env::current_exe().ok()?.parent()?.join("provider"));
+    }
     if cfg!(debug_assertions) {
         let development =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../provider/dist/qqmusic-provider");
@@ -853,8 +889,17 @@ fn provider_root(app: &tauri::AppHandle) -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
+fn application_data_directory(app: &tauri::AppHandle) -> Option<PathBuf> {
+    if release_smoke::active() {
+        release_smoke::data_directory()
+    } else {
+        app.path().app_data_dir().ok()
+    }
+}
+
+#[cfg(windows)]
 fn queue_service(app: &tauri::AppHandle) -> Option<QueueService> {
-    let root = app.path().app_data_dir().ok()?;
+    let root = application_data_directory(app)?;
     fs::create_dir_all(&root).ok()?;
     let mut queue = QueueService::open(&root.join("state.sqlite3")).ok()?;
     queue.shuffle_path = std::env::current_exe()
@@ -866,7 +911,7 @@ fn queue_service(app: &tauri::AppHandle) -> Option<QueueService> {
 
 #[cfg(windows)]
 fn persistence_service(app: &tauri::AppHandle) -> Option<PersistenceService> {
-    let root = app.path().app_data_dir().ok()?;
+    let root = application_data_directory(app)?;
     fs::create_dir_all(&root).ok()?;
     PersistenceService::open(&root.join("state.sqlite3")).ok()
 }
@@ -889,6 +934,12 @@ fn preferred_quality_from_playback(quality: PlaybackQuality) -> Option<Preferred
 }
 
 pub fn run() {
+    let mut context = tauri::generate_context!();
+    if release_smoke::active() {
+        for window in &mut context.config_mut().app.windows {
+            window.create = false;
+        }
+    }
     let builder = tauri::Builder::default();
     #[cfg(windows)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -906,6 +957,19 @@ pub fn run() {
             {
                 app.manage(AppState::initialize(app.handle()));
                 desktop::install_tray(app.handle())?;
+                if release_smoke::active() {
+                    for config in &app.config().app.windows {
+                        tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+                            .data_directory(
+                                release_smoke::data_directory()
+                                    .ok_or("smoke directory unavailable")?
+                                    .join("webview"),
+                            )
+                            .visible(false)
+                            .build()?;
+                    }
+                    release_smoke::schedule(app.handle().clone());
+                }
             }
             #[cfg(not(windows))]
             app.manage(AppState::bootstrap());
@@ -962,6 +1026,7 @@ pub fn run() {
             commands::library::library_set_liked,
             commands::library::library_set_favorite_playlist,
             commands::local_music::local_music_list,
+            commands::local_music::local_music_catalog,
             commands::local_music::local_music_import,
             commands::local_music::local_music_delete,
             commands::library::organizer_preview,
@@ -977,6 +1042,7 @@ pub fn run() {
             commands::playback::queue_move,
             commands::playback::queue_play,
             commands::settings::settings_snapshot,
+            commands::updates::updates_control,
             commands::settings::settings_set_preferred_quality,
             commands::settings::settings_set_live_spectrum_enabled,
             commands::settings::spectrum_set_stage_active,
@@ -988,7 +1054,7 @@ pub fn run() {
             commands::playback::queue_previous,
             desktop::tray_menu_action
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build QQ Music GUI")
         .run(|_app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
@@ -996,7 +1062,7 @@ pub fn run() {
             }
             #[cfg(windows)]
             if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
-                if desktop::should_prevent_exit(code) {
+                if !release_smoke::active() && desktop::should_prevent_exit(code) {
                     api.prevent_exit();
                 }
             }

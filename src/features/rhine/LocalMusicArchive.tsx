@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import type { LocalMusicTrack } from "../../contracts/localMusic";
 import { HistoryCassetteArray as SongCassetteArray } from "./HistoryCassetteArray";
@@ -23,6 +23,7 @@ export type LocalMusicArchiveProps = LocalArchiveOptions & {
   notice: string; warningCount: number; busy: boolean; importBusy: boolean; armedDeleteId: string;
   onImport: () => void; onReload: () => void; onPlay: (track: LocalMusicTrack) => void;
   onEnqueue: (track: LocalMusicTrack) => void; onDelete: (track: LocalMusicTrack) => void;
+  directoryManager?: ReactNode;
 };
 const PAGE_SIZE = 8;
 function duration(ms: number) { const seconds = Math.floor(ms / 1000); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; }
@@ -48,14 +49,14 @@ export default function LocalMusicArchive(props: LocalMusicArchiveProps) {
   }
   const metadata = chosen ? <dl className="rhine-history-metadata">
     <div><dt>格式</dt><dd>{chosen.format.toUpperCase()}</dd></div><div><dt>时长</dt><dd>{duration(chosen.durationMs)}</dd></div>
-    <div><dt>所属专辑</dt><dd>{chosen.album || "未标注"}</dd></div><div><dt>曲目来源</dt><dd>本地音乐</dd></div>
+    <div><dt>所属专辑</dt><dd>{chosen.album || "未标注"}</dd></div><div><dt>曲目来源</dt><dd>{chosen.referenced ? "引用原文件" : "受管理的复制文件"}{chosen.available === false ? " · 不可用，请重新定位或扫描目录" : ""}</dd></div>
   </dl> : null;
-  const play = chosen ? <button className="rhine-history-primary" disabled={props.busy} onClick={() => props.onPlay(chosen)} aria-label={`播放 ${chosen.title}`}><Icon name="play" size={16} />播放</button> : null;
+  const play = chosen ? <button className="rhine-history-primary" disabled={props.busy || chosen.available === false} onClick={() => props.onPlay(chosen)} aria-label={`播放 ${chosen.title}`}><Icon name="play" size={16} />播放</button> : null;
 
   return <section className="rhine-history rhine-local-archive" data-inspecting={detail && !!chosen} aria-label="本地音乐磁带阵列">
     <header className="rhine-history-heading">
       <div className="rhine-history-heading-title"><button className="rhine-back" onClick={props.onBack}>← 返回档案</button><h1>本地音乐</h1><span>{visibleTracks.length} 首</span><p className="rhine-eyebrow">LOCAL TAPES</p></div>
-      <div className="rhine-local-archive-tools"><button className="rhine-local-import" disabled={!props.liveRuntime || props.busy} onClick={props.onImport}><Icon name="library" size={15} />{props.importBusy ? "正在导入…" : "导入音乐"}</button>
+      <div className="rhine-local-archive-tools">{props.directoryManager}<button className="rhine-local-import" title="复制所选文件到应用媒体目录" disabled={!props.liveRuntime || props.busy} onClick={props.onImport}><Icon name="library" size={15} />{props.importBusy ? "正在导入…" : "导入音乐"}</button>
         <label className="rhine-history-search"><Icon name="search" size={15} /><span>搜索本地歌曲</span><input type="search" aria-label="搜索本地歌曲" placeholder="搜索歌曲、歌手或专辑" value={query} onChange={event => { setPage(0); setDetail(false); onQueryChange(event.target.value); }} /></label>
       </div>
     </header>
@@ -67,14 +68,14 @@ export default function LocalMusicArchive(props: LocalMusicArchiveProps) {
       <i className="rhine-history-screw" aria-hidden="true" /><i className="rhine-history-screw" aria-hidden="true" />
       <button className="rhine-back" onClick={() => setDetail(false)}>← 返回本地音乐阵列</button><p className="rhine-eyebrow">LOCAL TAPE / {String(currentPage * PAGE_SIZE + selected + 1).padStart(3, "0")}</p>
       <h2>{chosen.title}</h2><p>{chosen.artist}</p>{metadata}
-      <div className="rhine-history-actions">{play}<button disabled={props.busy} onClick={() => props.onEnqueue(chosen)}><Icon name="queue" size={16} />加入本地队列</button></div>
+      <div className="rhine-history-actions">{play}<button disabled={props.busy || chosen.available === false} onClick={() => props.onEnqueue(chosen)}><Icon name="queue" size={16} />加入本地队列</button></div>
       <div className="rhine-local-detail-tools"><button className="rhine-back" onClick={props.onDeck}>进入磁带机 ↗</button>
-        <button className="rhine-back rhine-local-delete" data-armed={props.armedDeleteId === chosen.id} disabled={props.busy} onClick={() => props.onDelete(chosen)}>{props.armedDeleteId === chosen.id ? `确认删除《${chosen.title}》` : "删除歌曲"}</button>
+        <button className="rhine-back rhine-local-delete" hidden={chosen.referenced} data-armed={props.armedDeleteId === chosen.id} disabled={props.busy} onClick={() => props.onDelete(chosen)}>{props.armedDeleteId === chosen.id ? `确认删除《${chosen.title}》` : "删除歌曲"}</button>
       </div>
     </section> : <section className="rhine-selection rhine-history-selection rhine-history-glass" aria-label="当前选中本地曲目">
       <i className="rhine-history-screw" aria-hidden="true" /><i className="rhine-history-screw" aria-hidden="true" />
       <div className="rhine-history-panel-label"><span>LOCAL TAPE / 本地磁带</span><span>{String(currentPage * PAGE_SIZE + selected + 1).padStart(3, "0")} / {String(visibleTracks.length).padStart(3, "0")}</span></div>
-      <div className="rhine-history-song-head"><SongCover title={chosen.title} /><div><h2>{chosen.title}</h2>{chosen.artist}</div></div><div className="rhine-history-ruler" aria-hidden="true" />{metadata}
+      <div className="rhine-history-song-head"><SongCover title={chosen.title} cacheKey={chosen.coverCacheKey} /><div><h2>{chosen.title}</h2>{chosen.artist}</div></div><div className="rhine-history-ruler" aria-hidden="true" />{metadata}
       <div className="rhine-history-actions">{play}<button onClick={() => open(selected)}><Icon name="up" size={16} />抽取磁带</button></div>
     </section>)}
     <footer className="rhine-catalog rhine-history-footer" hidden={detail && !!chosen}>

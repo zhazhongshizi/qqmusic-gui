@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $repositoryRoot 'src-tauri'
+& (Join-Path $PSScriptRoot 'assert-version-sources.ps1') -RepositoryRoot $repositoryRoot
 $tauriCli = Join-Path $repositoryRoot 'node_modules\.bin\tauri.CMD'
 $tauriConfig = Get-Content -LiteralPath (Join-Path $tauriRoot 'tauri.conf.json') -Raw |
     ConvertFrom-Json

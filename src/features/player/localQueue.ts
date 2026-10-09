@@ -10,6 +10,7 @@ export function queueTrackFromLocal(track: LocalMusicTrack): QueueTrack {
     artist: track.artist,
     album: track.album,
     durationMs: track.durationMs,
+    ...(track.coverCacheKey ? { coverCacheKey: track.coverCacheKey } : {}),
   };
 }
 

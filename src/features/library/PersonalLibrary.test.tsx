@@ -1,7 +1,7 @@
 import { cleanup,fireEvent,render,screen,waitFor } from "@testing-library/react";
 import { afterEach,beforeEach,expect,it,vi } from "vitest";
 import { BookmarkButton,SavedQueues } from "./PersonalLibrary";
-import { ListeningStatistics } from "./ListeningStatistics";
+import { ListeningRecords as ListeningStatistics } from "./ListeningStatistics";
 import { installPlaybackTransport } from "../../backend/playbackTransport";
 import { resetPlayerFixture } from "../player/playerStore";
 import { parseCollections,parseStatistics } from "../../backend/personalAdapter";

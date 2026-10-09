@@ -3,6 +3,7 @@ import { getStatistics, type Statistics, type ShuffleRow } from "../../backend/p
 import { playbackSessionIdentity, subscribePlaybackConnection } from "../../backend/playbackTransport";
 
 import { actOnStatisticsTrack, type StatisticsAction } from "../player/statisticsPlayback";
+import { ListeningAnalytics } from "./ListeningAnalytics";
 
 type View = "frequent" | "forgotten" | "records" | "shuffle";
 const VIEWS = [["frequent", "最近常听"], ["forgotten", "久未听"], ["records", "有效收听记录"], ["shuffle", "智能随机解释"]] as const;
@@ -63,7 +64,7 @@ function StatisticsRows({ data, view, days, busy, onAction }: { data: Statistics
       <span>{row.recentPlays} 次 · {duration(row.recentMs)}</span><TrackActions row={row} busy={busy} onAction={onAction}/></li>)}</ul>
     {!rows.length && <p>还没有记录，开始听歌后这里会逐步更新。</p>}</>;
 }
-export function ListeningStatistics() {
+export function ListeningRecords() {
   const [data, setData] = useState<Statistics | null>(null);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -119,5 +120,16 @@ export function ListeningStatistics() {
           <button type="button" key={id} aria-pressed={view === id} onClick={() => setView(id)}>{label}</button>)}</nav>
         <StatisticsRows data={data} view={view} days={days} busy={busy} onAction={(row,action)=>void act(row,action)} />
       </>}
+  </section>;
+}
+
+export function ListeningStatistics() {
+  const [view,setView]=useState<"analytics"|"records">("analytics");
+  return <section className="listening-statistics analytics-shell catalog-pane" aria-label="听歌统计">
+    <nav className="personal-actions" aria-label="统计视图">
+      <button type="button" aria-pressed={view==="analytics"} onClick={()=>setView("analytics")}>数据分析</button>
+      <button type="button" aria-pressed={view==="records"} onClick={()=>setView("records")}>收听记录与队列</button>
+    </nav>
+    {view==="analytics"?<ListeningAnalytics/>:<ListeningRecords/>}
   </section>;
 }

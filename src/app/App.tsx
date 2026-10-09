@@ -1,3 +1,4 @@
+import { UpdateNotice } from "../features/player/UpdateSettings";
 import {
   lazy, Suspense,
   useCallback,
@@ -419,6 +420,7 @@ export function App() {
     <>
     <NativePlayerBridge />
     <SpectrumBridge active={spectrumStageActive} />
+    <UpdateNotice />
     <div
       aria-hidden={accountOpen ? "true" : undefined}
       className={uiMode === "terminal" ? "app-shell app-shell--terminal" : uiMode === "rhine" ? "app-shell app-shell--rhine" : "app-shell app-shell--normal"}

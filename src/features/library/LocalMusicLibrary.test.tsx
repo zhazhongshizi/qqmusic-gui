@@ -63,6 +63,34 @@ afterEach(() => {
 });
 
 describe("LocalMusicLibrary", () => {
+  it("keeps reference deletion unavailable and blocks missing-track playback", async () => {
+    getMock.mockResolvedValue(list([{ ...TRACK, referenced: true, available: false }]));
+    render(<LocalMusicLibrary />);
+    const inspector = await screen.findByRole("complementary", { name: "当前选中本地曲目" });
+    expect(within(inspector).queryByRole("button", { name: "删除歌曲" })).not.toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "立即播放" })).toBeDisabled();
+    expect(within(inspector).getByRole("button", { name: "加入本地队列" })).toBeDisabled();
+  });
+
+  it("renders bounded pages but searches all indexed songs", async () => {
+    const tracks = Array.from({ length: 250 }, (_, i) => ({ ...TRACK, id: `local_${i.toString(16).padStart(64, "0")}_mp3`, title: `音乐 ${i}` }));
+    getMock.mockResolvedValue(list(tracks));
+    render(<LocalMusicLibrary />);
+    await screen.findByRole("button", { name: /音乐 0/ });
+    expect(screen.getAllByRole("row")).toHaveLength(101);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getByRole("button", { name: /音乐 100/ })).toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "搜索本地歌曲" }), "音乐 249");
+    expect(screen.getByRole("button", { name: /音乐 249/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+  });
+
+  it("does not expose directory management to remote clients", async () => {
+    render(<LocalMusicLibrary remote />);
+    await screen.findByRole("complementary", { name: "当前选中本地曲目" });
+    expect(screen.queryByRole("button", { name: "管理音乐目录" })).not.toBeInTheDocument();
+  });
   it("loads and renders the local catalog, then filters by title, artist, or album", async () => {
     const user = userEvent.setup();
     getMock.mockResolvedValueOnce(list([TRACK, SECOND]));

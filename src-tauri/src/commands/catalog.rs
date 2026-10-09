@@ -88,6 +88,13 @@ pub(crate) async fn cover_get(
     kind: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<CoverPayload, PublicError> {
+    if cache_key.starts_with("local_") && matches!(kind.as_deref(), None | Some("album")) {
+        let local = state.local_music.clone().ok_or_else(cover_unavailable)?;
+        return tauri::async_runtime::spawn_blocking(move || local.embedded_cover(&cache_key))
+            .await
+            .map_err(|_| cover_unavailable())?
+            .map_err(|_| cover_unavailable());
+    }
     let cover = state.cover.clone().ok_or_else(cover_unavailable)?;
     tauri::async_runtime::spawn_blocking(move || match kind.as_deref() {
         None | Some("album") => cover.get(&cache_key),

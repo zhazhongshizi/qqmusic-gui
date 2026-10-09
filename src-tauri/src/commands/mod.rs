@@ -6,3 +6,4 @@ pub(crate) mod personal;
 pub(crate) mod playback;
 pub(crate) mod remote;
 pub(crate) mod settings;
+pub(crate) mod updates;

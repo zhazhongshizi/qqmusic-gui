@@ -84,6 +84,16 @@ it("batch enqueue sends stable IDs once and updates the queue used for playback"
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"batchSong",queue_generation:13});
 });
 
+it("memory tape enqueue updates the stable queue used by immediate playback",async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(state)));
+  vi.stubGlobal("fetch",fetcher);await connectRemote("test-code");
+  const queue={generation:14,selectedIndex:0,items:[...state.queue.items,{id:"tapeSong",title:"Tape song",artist:"Artist",album:"",durationMs:0}]};
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify({queue,acceptedIds:["tapeSong"],skippedIds:[]})));
+  await invokeRemote("personal_library",{request:{action:"memoryTapeEnqueue",month:"2026-10",ids:["tapeSong"]}});
+  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:queue.items.length-1});
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"tapeSong",queue_generation:14});
+});
+
 it("uses stable queue IDs and player generations for writes", async () => {
   const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(state)));
   vi.stubGlobal("fetch", fetcher);

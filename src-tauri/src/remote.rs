@@ -617,7 +617,7 @@ mod tests {
                     CatalogProvider,
                 )))),
                 library: None,
-                queue: Some(queue),
+                queue: Some(queue.clone()),
                 auth: Arc::new(std::sync::RwLock::new(crate::AuthSnapshot::signed_out())),
                 tracks: Mutex::new(std::collections::HashMap::new()),
                 covers: Mutex::new(std::collections::HashSet::new()),
@@ -793,6 +793,28 @@ mod tests {
             200
         );
         assert_eq!(
+            catalog(r#"{"command":"personal_library","request":{"action":"listeningAnalytics","startDate":"2026-01-01","endDate":"2026-12-31"}}"#).status(),
+            200
+        );
+        assert_eq!(
+            catalog(
+                r#"{"command":"personal_library","request":{"action":"memoryTapes","before":null}}"#
+            )
+            .status(),
+            200
+        );
+        let tape_list = queue
+            .persistence
+            .memory_tapes(None, crate::personal::now_ms())
+            .unwrap();
+        let tape_month = tape_list["items"][0]["month"].as_str().unwrap();
+        let tape_detail=serde_json::json!({"command":"personal_library","request":{"action":"memoryTape","month":tape_month,"offset":0}}).to_string();
+        assert_eq!(catalog(&tape_detail).status(), 200);
+        let stats_before = queue.persistence.listening_report().unwrap();
+        let replay=serde_json::json!({"command":"personal_library","request":{"action":"memoryTapeEnqueue","month":tape_month,"ids":["stats-song"]}}).to_string();
+        assert_eq!(catalog(&replay).status(), 200);
+        assert_eq!(queue.persistence.listening_report().unwrap(), stats_before);
+        assert_eq!(
             catalog(r#"{"command":"queue_enqueue_many","ids":["remote-song","stats-song"]}"#)
                 .status(),
             200
@@ -839,6 +861,7 @@ mod tests {
         drop(client);
         tauri::async_runtime::block_on(task).unwrap();
         drop(session);
+        drop(queue);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

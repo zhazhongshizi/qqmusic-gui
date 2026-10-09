@@ -3057,7 +3057,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qqmusic-gui"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "axum",
  "image",
@@ -3066,6 +3066,7 @@ dependencies = [
  "rfd",
  "rusqlite",
  "rustfft",
+ "semver",
  "serde",
  "serde_json",
  "sha2",

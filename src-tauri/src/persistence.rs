@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
-pub const LOCAL_SCHEMA_VERSION: u32 = 9;
+pub const LOCAL_SCHEMA_VERSION: u32 = 11;
 const MAX_QUEUE_ITEMS: usize = 1_000;
 const MAX_HISTORY_ITEMS: i64 = 5_000;
 const MAX_METADATA_CACHE_ITEMS: i64 = 2_000;
@@ -1256,6 +1256,12 @@ fn migrate(connection: &mut Connection) -> Result<(), PersistenceError> {
             .execute_batch(MIGRATION_V9)
             .map_err(|_| PersistenceError::Unavailable)?;
     }
+    if version < 10 {
+        crate::listening_analytics::migrate(&transaction)?;
+    }
+    if version < 11 {
+        crate::memory_tapes::migrate(&transaction)?;
+    }
     transaction
         .pragma_update(None, "user_version", LOCAL_SCHEMA_VERSION)
         .map_err(|_| PersistenceError::Unavailable)?;
@@ -1500,7 +1506,7 @@ mod tests {
         assert_eq!(missing.cover_cache_key, None);
         assert_eq!(missing.album, "");
         assert_eq!(missing.duration_ms, 0);
-        assert_eq!(upgraded.schema_version().unwrap(), 9);
+        assert_eq!(upgraded.schema_version().unwrap(), LOCAL_SCHEMA_VERSION);
     }
 
     #[test]

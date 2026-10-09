@@ -1,6 +1,6 @@
 [package]
 name = "qqmusic-gui"
-version = "1.0.1"
+version = "1.1.0"
 description = "A local-first QQ Music desktop client"
 authors = ["QQ Music GUI contributors"]
 edition = "2021"
@@ -46,7 +46,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 tokio = { version = "1", features = ["net", "sync", "time"] }
-rusqlite = { version = "=0.40.1", features = ["bundled"] }
+rusqlite = { version = "=0.40.1", features = ["bundled", "backup"] }
+semver = "=1.0.28"
 reqwest = { version = "=0.12.28", features = ["blocking"] }
 image = { version = "=0.25.10", default-features = false, features = ["png", "webp"] }
 lofty = "=0.25.1"

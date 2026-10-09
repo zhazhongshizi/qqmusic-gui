@@ -351,7 +351,7 @@ impl RemoteLibrary {
                             album: item.album.clone(),
                             duration_ms: item.duration_ms,
                             media_mid: None,
-                            cover_cache_key: None,
+                            cover_cache_key: item.cover_cache_key.clone(),
                         },
                     );
                 }
@@ -521,11 +521,21 @@ pub(super) async fn cover(
     let Some(cover) = state.cover.clone() else {
         return error(StatusCode::NOT_FOUND, "暂无封面");
     };
+    let local = state
+        .library
+        .as_ref()
+        .and_then(|library| library.local.clone());
     let Ok(permit) = state.permits.clone().try_acquire_owned() else {
         return error(StatusCode::TOO_MANY_REQUESTS, "请稍后重试");
     };
     match tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;
+        if query.key.starts_with("local_") && query.kind.as_deref() != Some("artist") {
+            return local
+                .ok_or(crate::cover::CoverError::CoverUnavailable)?
+                .embedded_cover(&query.key)
+                .map_err(|_| crate::cover::CoverError::CoverUnavailable);
+        }
         match query.kind.as_deref() {
             Some("artist") => cover.get_artist(&query.key),
             _ => cover.get(&query.key),
@@ -555,6 +565,8 @@ mod tests {
             assert!(serde_json::from_str::<LibraryRequest>(value).is_ok());
         }
         for value in [
+            r#"{"command":"local_music_catalog","request":{"action":"status"}}"#,
+            r#"{"command":"local_music_catalog","request":{"action":"remove","id":"x"}}"#,
             r#"{"command":"catalog_search_entities","kind":"downloads","keyword":"test","page":1,"pageSize":20,"generation":1}"#,
             r#"{"command":"catalog_album_detail","albumId":"album-1","url":"SENTINEL"}"#,
             r#"{"command":"auth_logout"}"#,

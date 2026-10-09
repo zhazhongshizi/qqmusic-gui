@@ -9,6 +9,7 @@ import {
 import type { ArchiveRenderer, RhineFrameLimit, RhineSettings } from "./rhineSettings";
 import { MvFallbackSetting } from "../player/MvPlaybackSettings";
 import { SmartShuffleToggle } from "../player/SmartShuffleToggle";
+import UpdateSettings from "../player/UpdateSettings";
 
 import { isPlaybackQuality, PLAYBACK_QUALITY_OPTIONS } from "../../contracts/settings";
 import { playerActions, usePlayerSelector } from "../player/playerStore";
@@ -231,6 +232,7 @@ export function RhineSettingsPanel({
             <button type="button" onClick={onAccount}><span>账号设置</span><small>登录状态与账号管理 ↗</small></button>
             <button type="button" onClick={onExit}><span>返回主界面</span><small>切换至轻量主模式 ↗</small></button>
           </div>
+          <UpdateSettings presentation="rhine" />
         </section>}
       </div>
     </div>

@@ -1,0 +1,17 @@
+.rhine-update-trigger { margin-top: 18px; border: 1px solid #889b8b; padding: 10px 16px; color: inherit; }
+.update-dialog { width: min(700px,calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 24px; border: 1px solid #87958b; border-radius: 6px; color: #293b30; background: #f2f3ed; box-shadow: 0 20px 80px #10201555; }
+.update-dialog::backdrop { background: #111c18aa; }
+.update-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.update-dialog header span { font: 10px Consolas,monospace; letter-spacing: .13em; color: #647a6c; }
+.update-dialog h2 { font-size: 27px; margin: 9px 0; }.update-dialog h3 { margin: 0 0 7px; font-size: 19px; }
+.update-dialog p,.update-dialog label,.update-dialog small,.update-dialog summary { font-size: 13px; line-height: 1.7; }
+.update-dialog button,.update-notice button { font: inherit; font-size: 13px; color: inherit; background: #ffffff70; padding: 8px 12px; border: 1px solid #95a699; border-radius: 3px; cursor: pointer; }
+.update-dialog button:disabled { opacity: .5; cursor: default; }.update-dialog button:focus-visible,.update-dialog input:focus-visible { outline: 2px solid #3e7756; outline-offset: 3px; }
+.update-version { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid #b1bcb2; }.update-version strong { font: bold 24px Consolas,monospace; }.update-version small { color: #66746a; }
+.update-auto { display: flex; gap: 9px; align-items: center; }.update-auto input { accent-color: #4d795b; }
+.update-muted,.update-source { color: #63756a; }.update-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.update-release { margin: 22px 0; padding: 18px; border: 1px solid #b2bfb4; border-left: 3px solid #577462; }
+.update-release pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.8 system-ui,sans-serif; max-height: 280px; overflow-y: auto; }
+.update-data { border-top: 1px solid #b2bfb4; padding-top: 16px; margin-top: 24px; }.update-data summary { cursor: pointer; }.update-data dl { font-size: 12px; }.update-data dt { margin-top: 12px; font-weight: 600; }.update-data dd { margin: 4px 0; overflow-wrap: anywhere; }
+.update-notice { position: fixed; z-index: 120; bottom: 90px; right: 24px; max-width: min(380px,calc(100vw - 32px)); padding: 16px; color: #293b30; background: #f2f3ed; border: 1px solid #8f9e91; box-shadow: 0 6px 25px #14251a33; border-radius: 5px; font-size: 13px; }.update-notice p { margin: 0 0 12px; }.update-notice div { display: flex; gap: 10px; flex-wrap: wrap; }
+@media(max-width:540px) { .update-dialog { padding: 16px; }.update-release { padding: 12px; }.update-notice { right: 16px; } }

@@ -12,6 +12,7 @@ import type {
   LocalMusicTrack,
 } from "../../contracts/localMusic";
 import { Icon } from "../../components/Icon";
+import LocalMusicManager from "./LocalMusicManager";
 import { AlbumArtwork, type ArtworkTrack } from "../stage/AlbumArtwork";
 import {
   enqueueAndPlayLocalTrack,
@@ -50,6 +51,7 @@ function artworkTrack(track: LocalMusicTrack): ArtworkTrack {
     artist: track.artist,
     accent: LOCAL_ARTWORK_ACCENTS[variant] ?? LOCAL_ARTWORK_ACCENTS[0],
     artworkVariant: LOCAL_ARTWORK_VARIANTS[variant] ?? "fern",
+    coverCacheKey: track.coverCacheKey,
   };
 }
 
@@ -71,10 +73,10 @@ function friendlyError(error: unknown, operation: "load" | "import" | "queue" | 
     return "文件超过 4 GiB，无法导入。";
   }
   if (code === "QMG-LOCAL-MUSIC-CONFLICT" || code === "local_music_storage_conflict") {
-    return "本地音乐存储发生冲突，请检查受控目录后重试。";
+    return "另一个扫描或导入正在运行，或目录发生冲突，请稍后重试。";
   }
   if (code === "QMG-LOCAL-MUSIC-MISSING" || code === "local_music_file_missing") {
-    return "歌曲已不存在，请重新读取本地曲库。";
+    return "文件已移动、变更或不可用，请在目录管理中重新扫描或定位。";
   }
   if (code === "QMG-LOCAL-MUSIC-OUTCOME" || code === "local_music_delete_outcome_unknown") {
     return "删除结果暂时无法确认，请重新读取本地曲库。";
@@ -102,6 +104,7 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [armedDeleteId, setArmedDeleteId] = useState("");
   const [notice, setNotice] = useState("");
+  const [page, setPage] = useState(0);
   const generationRef = useRef(0);
   const mountedRef = useRef(false);
 
@@ -134,6 +137,9 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
 
   useEffect(() => {
     void loadLibrary();
+    const refresh = () => { void loadLibrary(); };
+    window.addEventListener("local-music-updated", refresh);
+    return () => window.removeEventListener("local-music-updated", refresh);
   }, [loadLibrary]);
 
   const tracks = library.state === "ready" ? library.tracks : [];
@@ -143,6 +149,9 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
       .toLocaleLowerCase("zh-CN").includes(normalizedQuery))
     : tracks;
   const selectedTrack = visibleTracks.find((track) => track.id === selectedId) ?? visibleTracks[0] ?? null;
+  const pages = Math.max(1, Math.ceil(visibleTracks.length / 100));
+  const currentPage = Math.min(page, pages - 1);
+  useEffect(() => { setPage(0); }, [query]);
 
   async function handleImport() {
     if (importBusy || deleteBusy || !liveRuntime) return;
@@ -160,7 +169,7 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
   }
 
   async function handleQueue(track: LocalMusicTrack, playNow: boolean) {
-    if (deleteBusy) return;
+    if (deleteBusy || track.available === false) return;
     setNotice(playNow ? "正在准备本地播放…" : "正在加入本地队列…");
     try {
       if (playNow) await enqueueAndPlayLocalTrack(track);
@@ -172,7 +181,7 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
   }
 
   async function handleDelete(track: LocalMusicTrack) {
-    if (deleteBusy || importBusy || !liveRuntime) return;
+    if (deleteBusy || importBusy || !liveRuntime || track.referenced) return;
     if (armedDeleteId !== track.id) {
       setArmedDeleteId(track.id);
       setNotice("");
@@ -202,11 +211,13 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
   }
 
   const RhineArchive = rhine?.component;
+  const manager = !remote && liveRuntime ? <LocalMusicManager onChanged={loadLibrary} disabled={importBusy || deleteBusy} /> : null;
   if (rhine && RhineArchive) return <Suspense fallback={<p role="status">正在载入本地音乐磁带…</p>}><RhineArchive {...rhine}
     state={library.state} liveRuntime={liveRuntime} tracks={tracks} visibleTracks={visibleTracks}
     selectedId={selectedTrack?.id ?? ""} onSelect={id => { setSelectedId(id); setArmedDeleteId(""); }}
     query={query} onQueryChange={setQuery} notice={notice} warningCount={library.state === "ready" ? library.warningCount : 0}
     busy={importBusy || deleteBusy} importBusy={importBusy} armedDeleteId={armedDeleteId}
+    directoryManager={manager}
     onImport={() => void handleImport()} onReload={() => void loadLibrary()}
     onPlay={track => void handleQueue(track, true)} onEnqueue={track => void handleQueue(track, false)} onDelete={track => void handleDelete(track)} />
   </Suspense>;
@@ -218,9 +229,9 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
           <div>
             <span className="section-label">LOCAL MUSIC</span>
             <h1 id="local-music-title">本地音乐</h1>
-            <p>{remote ? "电脑上的本地曲库 · MP3 / FLAC / OGG" : "EXE 相邻 local-music · 支持 MP3 / FLAC / OGG"}</p>
+            <p>{remote ? "电脑上的本地曲库 · MP3 / FLAC / OGG" : "多目录引用或复制 · 导入音乐按钮会复制文件到 local-music"}</p>
           </div>
-          {liveRuntime ? (
+          <div className="local-library-tools">{manager}{liveRuntime ? (
             <button
               className="text-button text-button--primary"
               disabled={importBusy || deleteBusy}
@@ -230,7 +241,7 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
             >
               <Icon name="library" size={16} />{importBusy ? "正在导入…" : "导入音乐"}
             </button>
-          ) : null}
+          ) : null}</div>
         </header>
 
         {liveRuntime ? (
@@ -264,13 +275,13 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
           <div className="catalog-table-wrap">
             <table className="catalog-table">
               <thead><tr><th scope="col">#</th><th scope="col">封面</th><th scope="col">曲目</th><th scope="col">歌手</th><th scope="col">专辑</th><th scope="col">格式</th><th scope="col">时长</th></tr></thead>
-              <tbody>{visibleTracks.map((track, index) => {
+              <tbody>{visibleTracks.slice(currentPage * 100, (currentPage + 1) * 100).map((track, index) => {
                 const active = currentTrack?.id === track.id;
                 return (
                   <tr className={active ? "catalog-table__active" : undefined} key={track.id}>
                     <td><span className={active ? "catalog-needle catalog-needle--active" : "catalog-needle"}>{active ? <span className="sr-only">当前曲目</span> : String(index + 1).padStart(2, "0")}</span></td>
                     <td><AlbumArtwork compact track={artworkTrack(track)} /></td>
-                    <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setArmedDeleteId(""); }} type="button"><strong>{track.title}</strong><small>{track.id}</small></button></td>
+                    <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setArmedDeleteId(""); }} type="button"><strong>{track.title}</strong><small>{track.available === false ? "文件不可用 · 请重新定位或扫描目录" : track.referenced ? "引用文件" : "受管理的复制文件"}</small></button></td>
                     <td>{track.artist}</td><td>{track.album}</td><td><span className="quality-tag">{track.format.toUpperCase()}</span></td><td className="catalog-table__duration">{formatDuration(track.durationMs)}</td>
                   </tr>
                 );
@@ -279,6 +290,7 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
           </div>
         )}
         {library.state === "ready" && library.warningCount > 0 ? <p aria-live="polite" className="catalog-inspector__notice">有 {library.warningCount} 个文件未能加入可播放列表。</p> : null}
+        {pages > 1 && <nav className="local-library-tools" aria-label="本地曲库分页"><button className="text-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>第 {currentPage + 1} / {pages} 页</span><button className="text-button" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></nav>}
       </section>
 
       {selectedTrack ? (
@@ -292,9 +304,11 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
             <div><dt>格式</dt><dd>{selectedTrack.format.toUpperCase()}</dd></div>
             <div><dt>时长</dt><dd>{formatDuration(selectedTrack.durationMs)}</dd></div>
           </dl>
-          <button className="text-button text-button--primary catalog-inspector__play" disabled={deleteBusy || importBusy} onClick={() => void handleQueue(selectedTrack, true)} type="button"><Icon name="play" size={17} />立即播放</button>
-          <button className="text-button" disabled={deleteBusy || importBusy} onClick={() => void handleQueue(selectedTrack, false)} type="button"><Icon name="queue" size={17} />加入本地队列</button>
-          <button className="text-button text-button--danger" disabled={deleteBusy || importBusy} hidden={remote}
+          {selectedTrack.available === false && <p>文件不可用，请在目录管理中重新定位或扫描。</p>}
+          {selectedTrack.referenced && <p>引用原文件；移除请使用“管理音乐目录”，原文件不会删除。</p>}
+          <button className="text-button text-button--primary catalog-inspector__play" disabled={deleteBusy || importBusy || selectedTrack.available === false} onClick={() => void handleQueue(selectedTrack, true)} type="button"><Icon name="play" size={17} />立即播放</button>
+          <button className="text-button" disabled={deleteBusy || importBusy || selectedTrack.available === false} onClick={() => void handleQueue(selectedTrack, false)} type="button"><Icon name="queue" size={17} />加入本地队列</button>
+          <button className="text-button text-button--danger" disabled={deleteBusy || importBusy} hidden={remote || selectedTrack.referenced}
               onClick={() => void handleDelete(selectedTrack)} type="button">
             {armedDeleteId === selectedTrack.id ? `确认删除《${selectedTrack.title}》` : "删除歌曲"}
           </button>

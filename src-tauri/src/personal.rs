@@ -64,6 +64,22 @@ pub enum PersonalRequest {
         #[serde(default)]
         since_ms: Option<u64>,
     },
+    #[serde(rename_all = "camelCase")]
+    ListeningAnalytics {
+        start_date: String,
+        end_date: String,
+    },
+    MemoryTapes {
+        before: Option<String>,
+    },
+    MemoryTape {
+        month: String,
+        offset: u32,
+    },
+    MemoryTapeEnqueue {
+        month: String,
+        ids: Vec<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -390,6 +406,8 @@ impl PersistenceService {
         )
         .map_err(unavailable)?;
         tx.execute("INSERT INTO listening_totals VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(track_id) DO UPDATE SET title=excluded.title,artist=excluded.artist,listened_ms=listened_ms+excluded.listened_ms,qualified_plays=qualified_plays+excluded.qualified_plays,last_played_ms=excluded.last_played_ms", params![id,title,artist,elapsed,i64::from(qualified),now]).map_err(unavailable)?;
+        crate::listening_analytics::record(&tx, id, now, elapsed, qualified)?;
+        crate::memory_tapes::register(&tx, now, elapsed)?;
         tx.execute("INSERT INTO listening_daily VALUES(?1,?2,?3,?4) ON CONFLICT(track_id,day) DO UPDATE SET listened_ms=listened_ms+excluded.listened_ms,qualified_plays=qualified_plays+excluded.qualified_plays",params![id,now/86_400_000,elapsed,i64::from(qualified)]).map_err(unavailable)?;
         tx.execute(
             "DELETE FROM listening_daily WHERE day < ?1",

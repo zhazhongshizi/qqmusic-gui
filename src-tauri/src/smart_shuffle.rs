@@ -167,6 +167,10 @@ impl SmartShuffle {
         self.likes = likes.unwrap_or_default();
     }
 
+    pub(crate) fn analytics_likes(&self) -> Option<HashSet<String>> {
+        self.likes_loaded.then(|| self.likes.clone())
+    }
+
     pub fn update_likes(&mut self, ids: &[String], liked: bool) {
         for id in ids {
             if liked {

@@ -15,6 +15,9 @@ export interface LocalMusicTrack {
   readonly album: string;
   readonly durationMs: number;
   readonly format: LocalMusicFormat;
+  readonly available?: boolean;
+  readonly referenced?: boolean;
+  readonly coverCacheKey?: string;
 }
 
 export type LocalMusicImportFailureCode =

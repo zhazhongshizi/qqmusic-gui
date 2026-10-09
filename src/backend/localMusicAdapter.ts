@@ -49,7 +49,7 @@ const IMPORT_KEYS = ["imported", "existingCount", "failures"] as const;
 const DELETE_KEYS = ["deletedId", "session", "autoPlayStarted"] as const;
 const FAILURE_KEYS = ["fileName", "code"] as const;
 const PUBLIC_ERROR_KEYS = ["code", "retryable", "operation", "correlationId", "userMessage"] as const;
-const MAX_TRACKS = 1_000;
+const MAX_TRACKS = 100_000;
 const MAX_TEXT_BYTES = 512;
 const MAX_FILE_NAME_BYTES = 512;
 const encoder = new TextEncoder();
@@ -119,8 +119,13 @@ function localTrackId(value: unknown, expectedFormat?: LocalMusicFormat): string
 }
 
 export function parseLocalMusicTrack(value: unknown): LocalMusicTrack {
-  const record = exactRecord(value, TRACK_KEYS);
+  const optional = ["available", "referenced", "coverCacheKey"].filter(key => typeof value === "object" && value !== null && key in value);
+  const record = exactRecord(value, [...TRACK_KEYS, ...optional]);
   const trackFormat = format(record.format);
+  for (const key of ["available", "referenced"]) {
+    if (key in record && typeof record[key] !== "boolean") return invalid();
+  }
+  if ("coverCacheKey" in record && record.coverCacheKey !== record.id) return invalid();
   return {
     id: localTrackId(record.id, trackFormat),
     title: text(record.title),
@@ -128,6 +133,9 @@ export function parseLocalMusicTrack(value: unknown): LocalMusicTrack {
     album: record.album === "" ? "" : text(record.album),
     durationMs: unsigned(record.durationMs),
     format: trackFormat,
+    ...("available" in record ? { available: record.available as boolean } : {}),
+    ...("referenced" in record ? { referenced: record.referenced as boolean } : {}),
+    ...("coverCacheKey" in record ? { coverCacheKey: record.coverCacheKey as string } : {}),
   };
 }
 
