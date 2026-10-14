@@ -24,6 +24,10 @@ class FakeClient:
         self.credential: object = SimpleNamespace(musicid=0, musickey="")
         self._session = SimpleNamespace(multiplexed=multiplexed, trust_env=True)
         self._device_store = SimpleNamespace(get_device=self.get_device)
+        self._engine = SimpleNamespace(
+            transport=SimpleNamespace(_client=self._session),
+            _cgi=SimpleNamespace(_device_store=self._device_store),
+        )
         self.closed = 0
         self.device_loaded = 0
 
@@ -85,6 +89,7 @@ async def test_missing_multiplexed_attribute_is_a_compatibility_failure() -> Non
         def __init__(self, path: str) -> None:
             super().__init__(path)
             self._session = SimpleNamespace()
+            self._engine.transport._client = self._session
 
     session = QQMusicSession(_device_path("session-broken"), client_factory=BrokenClient)
 

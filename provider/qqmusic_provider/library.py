@@ -378,8 +378,14 @@ def _normalize_write(
 
 
 async def _resolve_song_info(client: Any, song_ids: list[str]) -> list[tuple[int, int]]:
-    lookup: list[int] | list[str]
-    lookup = [int(identifier) for identifier in song_ids] if song_ids[0].isdecimal() else song_ids
+    from qqmusic_api.modules.song import SongQueryInfo
+
+    lookup = [
+        SongQueryInfo(id=int(identifier))
+        if song_ids[0].isdecimal()
+        else SongQueryInfo(mid=identifier)
+        for identifier in song_ids
+    ]
     response = await client.song.query_song(lookup)
     tracks = getattr(response, "tracks", None)
     if not isinstance(tracks, list) or len(tracks) != len(song_ids):
@@ -413,7 +419,7 @@ def _model_payload(value: object) -> Mapping[str, object]:
 
 def _map_upstream_error(error: Exception) -> LibraryFailure:
     from pydantic import ValidationError
-    from qqmusic_api import (  # type: ignore[import-untyped]
+    from qqmusic_api import (
         ApiDataError,
         BaseApiException,
         CredentialExpiredError,

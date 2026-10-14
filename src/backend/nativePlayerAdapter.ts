@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type { PlayerSnapshot, TrackSummary } from "../contracts/appSnapshot";
 
@@ -72,30 +73,13 @@ const TRACK_KEYS = ["id", "title", "artist"] as const;
 const FAILURE_KEYS = ["code", "recoverable", "generation"] as const;
 const LOAD_KEYS = ["quality", "expiresInSeconds", "player"] as const;
 
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" || value === null || Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) throw new PlayerAdapterError("QMG-PLAYER-002");
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
-    throw new PlayerAdapterError("QMG-PLAYER-002");
-  }
-  return value as Record<string, unknown>;
-}
+const { exactRecord, unsigned } = createSchemaGuards(() => { throw new PlayerAdapterError("QMG-PLAYER-002"); });
 
 function text(value: unknown, maximum: number): string {
   if (typeof value !== "string" || value.length === 0 || value.length > maximum) {
     throw new PlayerAdapterError("QMG-PLAYER-002");
   }
   return value;
-}
-
-function unsigned(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) {
-    throw new PlayerAdapterError("QMG-PLAYER-002");
-  }
-  return value as number;
 }
 
 function parseTrack(value: unknown): TrackSummary | null {

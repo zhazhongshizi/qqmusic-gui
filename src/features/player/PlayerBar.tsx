@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { CommitRange } from "./CommitRange";
 
 import { Icon } from "../../components/Icon";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -43,11 +44,11 @@ function PlayerTimeline({ track }: { track: NonNullable<ReturnType<typeof getCur
   return (
     <div className="player-bar__timeline">
       <span>{formatTime(positionMs)}</span>
-      <input
+      <CommitRange
         aria-label="播放进度"
         max={track.durationMs}
         min="0"
-        onChange={(event) => playerActions.seek(Number(event.currentTarget.value))}
+        onCommit={playerActions.seek}
         style={{
           "--range-progress": `${track.durationMs === 0 ? 0 : (positionMs / track.durationMs) * 100}%`,
         } as CSSProperties}
@@ -89,7 +90,7 @@ export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
             <button className="text-button" onClick={playerActions.retryPlayback} type="button">重试播放</button>
           </div>
         ) : null}
-        <PlayerTimeline track={track} />
+        <PlayerTimeline key={track.id} track={track} />
         <div className="player-bar__transport">
           <button
             aria-label={`${MODE_LABELS[mode]}，点击切换模式`}
@@ -129,11 +130,11 @@ export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
       <div className="player-bar__tools">
         <div className="player-bar__volume">
           <label className="sr-only" htmlFor="player-volume">音量</label>
-          <input
+          <CommitRange
             id="player-volume"
             max="1"
             min="0"
-            onChange={(event) => playerActions.setVolume(Number(event.currentTarget.value))}
+            onCommit={playerActions.setVolume}
             step="0.01"
             style={{ "--range-progress": `${(muted ? 0 : volume) * 100}%` } as CSSProperties}
             type="range"

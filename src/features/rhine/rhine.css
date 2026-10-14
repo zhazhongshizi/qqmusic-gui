@@ -96,6 +96,18 @@
 .rhine-search-form input { min-width: 0; flex: 1; border: 0; outline: 0; padding: 18px; color: var(--rh-ink); background: transparent; font-family: inherit; font-size: 18px; }
 .rhine-search-form:focus-within { outline: 1px solid rgb(var(--rh-accent-rgb) / 53%); }
 .rhine-search-form button { padding: 12px 24px; color: var(--rh-accent-strong); }
+.rhine-search-form .catalog-search-combobox { flex: 1; margin: 0; }
+.rhine-search-form .catalog-search { background: transparent; border: 0; padding: 0 10px; margin: 0; }
+.rhine-search .catalog-suggestions { background: #f2f0ea; color: var(--rh-ink); border-color: #aaa99e; }
+.rhine-search .catalog-suggestions button { padding: 10px 12px; }
+.rhine-search .catalog-suggestions [aria-selected="true"] button, .rhine-search .catalog-suggestions button:hover { background: rgb(var(--rh-accent-rgb) / 12%); }
+.rhine-discovery[hidden] { display: none; }
+.rhine-discovery { min-width: 0; }
+.rhine-discovery .catalog-detail-page { padding: 0; }
+.rhine-discovery .recommendation-heading h2 { font-weight: 500; }
+.rhine-discovery .catalog-entity-card { border-color: #7a7f743b; border-radius: 3px; color: var(--rh-ink); background: #ffffff66; }
+.rhine-discovery .catalog-entity-card:hover { background: #ffffffaa; }
+.rhine-discovery .catalog-detail-song-actions { flex-shrink: 0; }
 .rhine-playlist-search { margin-top: 18px; }
 .rhine-playlist-search input { padding: 12px; font-size: var(--rh-size-body); }
 .rhine-playlist-search button { flex-shrink: 0; border: 0; background: transparent; padding: 10px 12px; font-size: var(--rh-size-body); }

@@ -1,6 +1,7 @@
 import { UpdateNotice } from "../features/player/UpdateSettings";
 import {
   lazy, Suspense,
+  useMemo,
   useCallback,
   useEffect,
   useRef,
@@ -23,6 +24,7 @@ import {
 import type { AuthSnapshot } from "../contracts/auth";
 import { LoginDialog } from "../features/auth/LoginDialog";
 import { NativePlayerBridge } from "../features/player/NativePlayerBridge";
+import { useAccountLikes } from "../features/player/useAccountLikes";
 import { SpectrumBridge } from "../features/spectrum/SpectrumBridge";
 import {
   getCurrentTrack,
@@ -110,6 +112,7 @@ export function App() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [authSnapshot, setAuthSnapshot] = useState<AuthSnapshot>({ state: "signedOut" });
   const [authRecovering, setAuthRecovering] = useState(true);
+  useAccountLikes(authSnapshot, authRecovering);
   const [uiMode, setUiMode] = useState<UiMode>(readUiMode);
   const [fixtureStatus, setFixtureStatus] = useState<FixtureStatus>("normal");
   const [dynamicLyricsEnabled, setDynamicLyricsEnabled] = useState(false);
@@ -148,6 +151,7 @@ export function App() {
   const isPlaying = usePlayerSelector(selectIsPlaying);
   const nativeMode = usePlayerSelector(selectNativeMode);
   const { palette, style: coverPaletteStyle } = useCoverPalette(currentTrack, glowIntensity);
+  const glowPaletteKey = useMemo(() => JSON.stringify(coverPaletteStyle), [coverPaletteStyle]);
   const coverTone = uiMode === "normal" && view === "stage" && currentTrack
     ? palette.tone
     : "dark";
@@ -187,6 +191,11 @@ export function App() {
       }
     });
   }, [enqueueWindowTransition, uiMode]);
+
+  const handleExitRhine = useCallback(() => {
+    uiModeIntentRef.current = "normal";
+    setUiMode("normal");
+  }, []);
 
   const handleEnterRhine = () => {
     uiModeIntentRef.current = "rhine";
@@ -434,8 +443,8 @@ export function App() {
       {uiMode === "terminal" ? (
         <TerminalMiniMode onExit={handleExitTerminal} />
       ) : uiMode === "rhine" ? (
-        <ModeLoadBoundary onExit={handleExitTerminal}><Suspense fallback={<div role="status">正在载入莱茵界面…<button onClick={handleExitTerminal}>返回主界面</button></div>}>
-          <RhineMode auth={authSnapshot} authRecovering={authRecovering} active={windowRenderable && !accountOpen} onExit={handleExitTerminal} onAccount={() => setAccountOpen(true)} />
+        <ModeLoadBoundary onExit={handleExitRhine}><Suspense fallback={<div role="status">正在载入莱茵界面…<button onClick={handleExitRhine}>返回主界面</button></div>}>
+          <RhineMode auth={authSnapshot} authRecovering={authRecovering} active={windowRenderable && !accountOpen} onExit={handleExitRhine} onAccount={() => setAccountOpen(true)} />
         </Suspense></ModeLoadBoundary>
       ) : (
         <NormalMode
@@ -467,7 +476,7 @@ export function App() {
           librarySection={librarySection}
           queueOpen={queueOpen}
           handlePublicStateAction={handlePublicStateAction}
-          glowPaletteKey={JSON.stringify(coverPaletteStyle)}
+          glowPaletteKey={glowPaletteKey}
           spectrumPaletteKey={`${palette.primary}:${palette.surface.onSurface}`}
         />
       )}

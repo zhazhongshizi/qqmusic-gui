@@ -1,4 +1,5 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { CommitRange } from "../player/CommitRange";
 import { Icon } from "../../components/Icon";
 import { DeckCaption } from "./DeckCaption";
 import { DeckOutroPreview } from "./DeckOutroPreview";
@@ -25,7 +26,7 @@ function DeckTimeline() {
   const track = usePlayerSelector(getCurrentTrack);
   const position = usePlayerSelector(s => s.positionMs);
   const duration = track?.durationMs ?? 0;
-  return <div className="rhine-deck-timeline"><span>{time(position)}</span><input aria-label="播放进度" type="range" min={0} max={duration || 1} disabled={!duration} value={Math.min(position, duration)} onChange={e => playerActions.seek(Number(e.target.value))} style={{ "--range-progress": `${duration ? position / duration * 100 : 0}%` } as CSSProperties} /><span>{time(duration)}</span></div>;
+  return <div className="rhine-deck-timeline"><span>{time(position)}</span><CommitRange key={track?.id} aria-label="播放进度" min={0} max={duration || 1} disabled={!duration} value={Math.min(position, duration)} onCommit={playerActions.seek} /><span>{time(duration)}</span></div>;
 }
 
 function DeckLyric({ onOpen }: { onOpen: () => void }) {
@@ -46,17 +47,25 @@ function VolumeDial() {
   const volume = usePlayerSelector(s => s.volume);
   const muted = usePlayerSelector(s => s.muted);
   const drag = useRef<{ x: number; y: number; value: number } | null>(null);
-  const value = muted ? 0 : volume;
+  const [draft, setDraft] = useState<number | null>(null);
+  const draftRef = useRef<number | null>(null);
+  const keyboard = useRef(false);
+  const value = draft ?? (muted ? 0 : volume);
+  const cancel = () => { drag.current = null; keyboard.current = false; draftRef.current = null; setDraft(null); };
+  const preview = (value: number) => { draftRef.current = value; setDraft(value); };
+  const commit = () => { const next = draftRef.current; cancel(); if (next !== null) playerActions.setVolume(next); };
   return <div className="rhine-deck-volume">
     <button aria-label={muted ? "取消静音" : "静音"} onClick={playerActions.toggleMute}><Icon name={muted ? "mute" : "volume"} size={15} /></button>
     <div className="rhine-volume-dial" style={{ "--dial-angle": `${-135 + value * 270}deg` } as CSSProperties}>
       <span className="rhine-volume-knob" aria-hidden="true"><i /></span>
       <input aria-label="音量" aria-valuetext={`${Math.round(value * 100)}%`} title="音量：上下或左右拖动，也可使用方向键" type="range" min={0} max={1} step={0.01} value={value}
-        onChange={e => playerActions.setVolume(Number(e.target.value))}
-        onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, value }; }}
-        onPointerMove={e => { const start = drag.current; if (!start) return; playerActions.setVolume(Math.min(1, Math.max(0, start.value + (e.clientX - start.x + start.y - e.clientY) / 160))); }}
-        onPointerUp={e => { drag.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); }}
-        onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} />
+        onChange={e => { const next = Number(e.target.value); if (drag.current || keyboard.current) preview(next); else playerActions.setVolume(next); }}
+        onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); e.currentTarget.focus(); e.currentTarget.setPointerCapture?.(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, value }; }}
+        onPointerMove={e => { const start = drag.current; if (!start) return; preview(Math.min(1, Math.max(0, start.value + (e.clientX - start.x + start.y - e.clientY) / 160))); }}
+        onPointerUp={e => { commit(); if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); }}
+        onKeyDown={e => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) keyboard.current = true; if (e.key === "Escape") cancel(); }}
+        onKeyUp={() => { if (keyboard.current) commit(); }} onBlur={commit}
+        onPointerCancel={cancel} onLostPointerCapture={cancel} />
     </div>
     <span className="rhine-volume-reading" aria-hidden="true">{Math.round(value * 100).toString().padStart(2, "0")}</span>
   </div>;

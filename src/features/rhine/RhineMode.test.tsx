@@ -82,11 +82,11 @@ it("图标导航保留完整名称，切换页面时只有当前入口显示短�
   render(<RhineMode {...props} />);
   await screen.findByRole("button", { name: /抽取档案/ });
   const nav = screen.getByRole("navigation", { name: "档案分类" });
-  const names = ["创建的歌单", "收藏的歌单", "搜索", "本地音乐", "最近播放", "资料库", "听歌统计", "回忆磁带", "设置"];
+  const names = ["创建的歌单", "收藏的歌单", "搜索", "发现音乐", "本地音乐", "最近播放", "资料库", "听歌统计", "回忆磁带", "设置"];
   expect(within(nav).getAllByRole("button")).toHaveLength(names.length);
   for (const name of names) {
     const button = within(nav).getByRole("button", { name });
-    expect(button.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(button.querySelector(".icon")).toHaveAttribute("aria-hidden", "true");
     expect(button.querySelector(".rhine-nav-tooltip")).toHaveTextContent(name);
   }
   const chosen = () => [...nav.querySelectorAll('button[aria-pressed="true"]')].map(button => button.getAttribute("aria-label"));
@@ -271,7 +271,7 @@ it("设置页保留搜索关键词和同一个暂停场景，返回或切换搜�
   expect(scene).toHaveAttribute("data-active", "true");
   fireEvent.click(screen.getByRole("button", { name: "搜索" }));
   const search = await screen.findByRole("region", { name: "音乐档案搜索" });
-  const input = screen.getByRole("textbox", { name: "搜索歌曲" });
+  const input = screen.getByRole("combobox", { name: "搜索歌曲" });
   fireEvent.change(input, { target: { value: "保存的关键词" } });
 
   fireEvent.click(screen.getByRole("button", { name: "设置" }));

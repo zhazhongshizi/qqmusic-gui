@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$Live,
-    [ValidateSet('0.6.9', '0.7.1')]
-    [string[]]$Version = @('0.6.9', '0.7.1'),
+    [ValidateSet('0.6.9', '0.8.2')]
+    [string[]]$Version = @('0.6.9', '0.8.2'),
     [string]$PythonExe = 'python3.13',
     [string]$ResultPath
 )

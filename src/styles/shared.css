@@ -3477,6 +3477,30 @@ body.queue-drag-active * {
 .catalog-type-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px; }
 .catalog-type-tabs button { color: inherit; padding: 8px 20px; border: 1px solid currentColor; border-radius: 4px; opacity: .65; background: transparent; }
 .catalog-type-tabs button[aria-pressed="true"] { opacity: 1; background: rgba(120,149,117,.14); }
+.catalog-search-combobox { position: relative; min-width: 0; margin-bottom: 18px; }
+.catalog-search-combobox .catalog-search { margin-bottom: 0; }
+.catalog-search-combobox input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.catalog-suggestions { position: absolute; z-index: 20; inset: calc(100% + 5px) 0 auto; margin: 0; padding: 6px; list-style: none; border: 1px solid var(--glass-edge, #7c8a7a); border-radius: 12px; background: #25352d; color: #f1ebdd; box-shadow: 0 10px 26px #0004; max-height: 320px; overflow-y: auto; }
+.catalog-suggestions button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-radius: 7px; color: inherit; background: transparent; text-align: left; }
+.catalog-suggestions span { overflow-wrap: anywhere; }
+.catalog-suggestions [aria-selected="true"] button, .catalog-suggestions button:hover { background: #ffffff19; }
+.library-workspace.library-workspace--recommendations { grid-template-columns: 168px minmax(0, 1fr); }
+.recommendation-heading { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin: 20px 0; }
+.recommendation-heading h2 { margin: 0 0 6px; font-size: 20px; }
+.recommendation-heading p { margin: 0; font-size: 12px; opacity: .7; }
+.recommendation-heading > button { flex-shrink: 0; }
+.recommendation-songs { margin: 0; }
+.recommendation-songs > li { gap: 16px; }
+.recommendation-songs > li > .album-artwork { flex: 0 0 54px; width: 54px; height: 54px; }
+.recommendation-songs > li > div:not(.album-artwork) { flex: 1; min-width: 0; }
+.recommendation-description { display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.recommendation-notice { margin-top: 16px; }
+@media (max-width: 700px) {
+  .remote-shell .library-workspace.library-workspace--recommendations { grid-template-columns: minmax(0, 1fr); }
+  .recommendation-heading { align-items: flex-start; }
+  .recommendation-songs > li { flex-wrap: wrap; }
+  .recommendation-songs .catalog-detail-song-actions { margin-left: auto; }
+}
 .catalog-entity-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .catalog-entity-card { display: flex; align-items: center; gap: 18px; width: 100%; padding: 14px; border: 1px solid rgba(120,149,117,.25); border-radius: 6px; background: transparent; color: inherit; text-align: left; }
 .catalog-entity-card:hover { background: rgba(120,149,117,.08); }

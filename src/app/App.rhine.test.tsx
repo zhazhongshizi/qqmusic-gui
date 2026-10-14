@@ -4,6 +4,10 @@ import { useEffect } from "react";
 import { App, UI_MODE_STORAGE_KEY } from "./App";
 import { resetPlayerFixture } from "../features/player/playerStore";
 const state = vi.hoisted(() => ({ mounts: vi.fn(), unmounts: vi.fn(), bridges: vi.fn() }));
+const restore = vi.hoisted(() => vi.fn());
+vi.mock("../backend/windowAdapter", async importOriginal => ({
+  ...await importOriginal<typeof import("../backend/windowAdapter")>(), windowRestoreNormal: restore,
+}));
 vi.mock("../features/rhine/RhineMode", () => ({ default: ({ onExit }: { onExit: () => void }) => {
   useEffect(() => { state.mounts(); return () => { state.unmounts(); }; }, []);
   return <button onClick={onExit}>退出测试莱茵</button>;
@@ -23,6 +27,7 @@ it("普通模式不挂载重型界面，切换并退出只卸载界面且保存�
   expect(state.unmounts).toHaveBeenCalledTimes(1);
   expect(state.bridges).toHaveBeenCalledTimes(1);
   expect(localStorage.getItem(UI_MODE_STORAGE_KEY)).toBe("normal");
+  expect(restore).not.toHaveBeenCalled();
 });
 it("记住莱茵模式并在下次挂载时恢复", async () => {
   localStorage.setItem(UI_MODE_STORAGE_KEY, "rhine");

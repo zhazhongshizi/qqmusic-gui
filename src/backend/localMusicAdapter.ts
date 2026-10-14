@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import {
   LOCAL_MUSIC_FORMATS,
@@ -63,25 +64,10 @@ const FAILURE_CODES: readonly LocalMusicImportFailureCode[] = [
   "local_music_storage_conflict",
 ];
 
+const { exactRecord, unsigned } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new LocalMusicAdapterError("QMG-LOCAL-MUSIC-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
-}
-
-function unsigned(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) return invalid();
-  return value as number;
 }
 
 function text(value: unknown, maximum = MAX_TEXT_BYTES): string {

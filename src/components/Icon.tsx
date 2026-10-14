@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
+import discoveryCompass from "../assets/icons/discovery-compass.png";
+import memoryTape from "../assets/icons/memory-tape.png";
 
-export type IconName =
+const generatedIcons = { discovery: discoveryCompass, "memory-tape": memoryTape };
+type GeneratedIconName = keyof typeof generatedIcons;
+
+export type IconName = GeneratedIconName
   | "back"
   | "close"
   | "cassette-add"
@@ -37,7 +42,23 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 20 }: IconProps) {
-  const paths: Record<IconName, ReactNode> = {
+  if (name === "discovery" || name === "memory-tape") {
+    // GPT Image glyphs use white on black; luminance masks retain currentColor.
+    const maskImage = `url("${generatedIcons[name]}")`;
+    return (
+      <span
+        aria-hidden="true"
+        className="icon icon--generated"
+        style={{
+          display: "inline-block", width: size, height: size, backgroundColor: "currentColor",
+          maskImage, maskMode: "luminance", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat",
+          WebkitMaskImage: maskImage, WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat",
+        }}
+      />
+    );
+  }
+
+  const paths: Record<Exclude<IconName, GeneratedIconName>, ReactNode> = {
     back: <path d="m15 18-6-6 6-6M9 12h11" />,
     close: <path d="M6 6l12 12M18 6 6 18" />,
     "cassette-add": <><path d="M12 18H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6M9 10h4M18 15v7M14.5 18.5h7" /><circle cx="7" cy="10" r="2" /><circle cx="15" cy="10" r="2" /></>,

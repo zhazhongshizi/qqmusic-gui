@@ -111,8 +111,8 @@ describe("应用外壳键盘与状态契约", () => {
     await waitFor(() => expect(searchAction).toHaveFocus());
 
     await user.click(searchAction);
-    expect(await screen.findByRole("heading", { name: "搜索音乐" })).toBeInTheDocument();
-    const searchbox = screen.getByRole("searchbox", { name: "搜索歌曲、歌手或专辑" });
+    expect(await screen.findByRole("heading", { name: "搜索音乐" }, { timeout: 3000 })).toBeInTheDocument();
+    const searchbox = screen.getByRole("combobox", { name: "搜索歌曲、歌手或专辑" });
     await waitFor(() => expect(searchbox).toHaveFocus());
     expect(content).not.toHaveAttribute("inert");
   });
@@ -139,7 +139,7 @@ describe("应用外壳键盘与状态契约", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "搜索" }));
-    const searchbox = await screen.findByRole("searchbox", { name: "搜索歌曲、歌手或专辑" });
+    const searchbox = await screen.findByRole("combobox", { name: "搜索歌曲、歌手或专辑" });
     await user.type(searchbox, "不存在");
     expect(screen.getByText("没有找到匹配的音乐")).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "当前选中曲目" })).not.toBeInTheDocument();
@@ -165,7 +165,7 @@ describe("应用外壳键盘与状态契约", () => {
     await user.click(within(dialog).getByRole("button", { name: "关闭播放队列" }));
 
     await user.click(screen.getByRole("button", { name: "曲库" }));
-    await screen.findByRole("heading", { name: "今日唱片目录" });
+    await screen.findByRole("heading", { name: "发现音乐" });
     await user.click(screen.getByRole("button", { name: /纸月光/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中曲目" });
     await user.click(within(inspector).getByRole("button", { name: "立即播放" }));

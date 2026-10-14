@@ -21,7 +21,7 @@ import { applyTextureQuality, resizeQuality } from "./quality-renderer";
 import { CardAppearance } from "./appearance";
 import { configureInternalOptics } from "./internal-optics";
 import { DecryptionController } from "./decryption";
-import { fileAtSlot, fileLocation, archiveTitle } from "./data";
+import { fileAtSlot, fileLocation } from "./data";
 import { drawCassetteCover, drawCassetteLabel } from "./cassette-print";
 import { ArchiveArtwork, type ArchiveTrack } from "./archive-artwork";
 import {
@@ -279,6 +279,12 @@ export class ArchiveScene {
   private trackLabelTexture?: THREE.CanvasTexture;
   private trackLabel?: THREE.Mesh;
   private archiveArtwork?: ArchiveArtwork;
+  private titles: readonly string[] = [];
+  setTitles(titles: readonly string[]) {
+    this.titles = titles;
+    this.drawLabel(fileAtSlot(this.selectedSlot));
+    this.invalidate();
+  }
   private archivePrint?: { index: number; title: string; artist: string; cover: HTMLImageElement | null };
   setArchiveTracks(tracks: readonly ArchiveTrack[]) {
     this.archivePrint = undefined;
@@ -1002,7 +1008,7 @@ export class ArchiveScene {
   }
   private drawLabel(index: number) {
     if (!this.labelTexture) return;
-    drawArchiveLabel(this.labelCanvas,index,archiveTitle(index),this.labelMark);
+    drawArchiveLabel(this.labelCanvas,index,this.titles[index] ?? "音乐档案",this.labelMark);
     this.labelTexture.needsUpdate = true;
   }
   private ensureInstanceCapacity(required: number) {

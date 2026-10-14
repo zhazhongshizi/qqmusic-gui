@@ -2,11 +2,13 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import LibraryWorkspace from "../features/library/LibraryWorkspace";
 import { Icon } from "../components/Icon";
 import type { AuthSnapshot } from "../contracts/auth";
+import { parseAuthSnapshot } from "../backend/authAdapter";
 import type { LibrarySection } from "../app/uiModes";
 import { ListeningStage } from "../features/stage/ListeningStage";
 import { PlayerBar } from "../features/player/PlayerBar";
 import { QueueDrawer } from "../features/player/QueueDrawer";
 import { NativePlayerBridge } from "../features/player/NativePlayerBridge";
+import { useAccountLikes } from "../features/player/useAccountLikes";
 import { getCurrentTrack, playerActions, usePlayerSelector } from "../features/player/playerStore";
 import { useCoverPalette } from "../features/stage/coverPalette";
 import { connectRemote, disconnectRemote, invokeRemote, remoteStatus, subscribeRemote } from "./remoteTransport";
@@ -28,6 +30,7 @@ export function RemoteApp() {
   const track = usePlayerSelector(getCurrentTrack);
   const { palette, style } = useCoverPalette(ready ? track : null, "standard");
   const paired = ready && connection !== "disconnected" && connection !== "connecting";
+  useAccountLikes(auth, !paired || connection !== "online");
   useEffect(() => {
     if (!paired || connection !== "online") return;
     let active = true;
@@ -36,9 +39,11 @@ export function RemoteApp() {
       if (reading || document.visibilityState !== "visible") return;
       reading = true;
       try {
-        const value = await invokeRemote("auth_status") as { state?: string };
-        if (active && ["authenticated", "signedOut", "unavailable"].includes(value.state ?? "")) {
-          setAuth(previous => previous.state === value.state ? previous : { state: value.state } as AuthSnapshot);
+        const value = parseAuthSnapshot(await invokeRemote("auth_status"));
+        if (active) {
+          setAuth(previous => previous.state === value.state
+            && (previous.state !== "authenticated" || value.state !== "authenticated"
+              || (previous.account?.musicId === value.account?.musicId && previous.account?.loginMethod === value.account?.loginMethod)) ? previous : value);
         }
       } catch { /* Existing page errors remain visible; playback polling handles reconnect. */ }
       finally { reading = false; }

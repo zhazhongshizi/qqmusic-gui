@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import { parseCatalogSongPage } from "./catalogAdapter";
 import type { CatalogSongPage } from "../contracts/catalog";
@@ -42,7 +43,6 @@ export class LibraryAdapterError extends Error {
   }
 }
 
-const encoder = new TextEncoder();
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const NUMERIC_ID = /^\d{1,128}$/;
 const PLAN_ID = /^plan-[a-f0-9]{32}$/;
@@ -64,31 +64,10 @@ const EXECUTION_KEYS = [
   "pendingVerificationCount",
 ] as const;
 
+const { exactRecord, unsigned, utf8Text } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new LibraryAdapterError("QMG-LIBRARY-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" || value === null || Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
-}
-
-function unsigned(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) return invalid();
-  return value as number;
-}
-
-function text(value: unknown, maximum = 512, allowEmpty = false): string {
-  if (
-    typeof value !== "string" || (!allowEmpty && value.length === 0) ||
-    encoder.encode(value).byteLength > maximum || /[\r\n\0]/.test(value)
-  ) return invalid();
-  return value;
 }
 
 function identifier(value: unknown, numeric = false): string {
@@ -300,3 +279,5 @@ export function executeOrganizer(planId: string): Promise<OrganizerExecution> {
   if (!PLAN_ID.test(planId)) return invalid();
   return invoke(LIBRARY_COMMANDS.organizerExecute, { planId, confirm: true }, parseOrganizerExecution);
 }
+
+function text(value: unknown, maximum = 512, allowEmpty = false): string { return utf8Text(value, maximum, allowEmpty); }

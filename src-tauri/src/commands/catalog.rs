@@ -1,10 +1,54 @@
 use crate::catalog::CatalogArtistRef;
 use crate::catalog::{CatalogAlbum, CatalogEntityPage, CatalogSearchKind};
+use crate::catalog::{CatalogSuggestions, RecommendationKind};
 use crate::{
     cover_unavailable, provider_unavailable, public_catalog_error, public_cover_error,
     public_lyric_error, AppState, CatalogArtist, CatalogSongPage, CoverError, CoverPayload,
     LyricTimeline, PublicError, State,
 };
+
+#[tauri::command]
+pub(crate) async fn catalog_search_suggestions(
+    keyword: String,
+    generation: u64,
+    state: State<'_, AppState>,
+) -> Result<CatalogSuggestions, PublicError> {
+    let catalog = state.catalog.clone().ok_or_else(provider_unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || catalog.search_suggestions(&keyword, generation))
+        .await
+        .map_err(|_| provider_unavailable())?
+        .map_err(public_catalog_error)
+}
+
+#[tauri::command]
+pub(crate) async fn catalog_recommend_songs(
+    kind: RecommendationKind,
+    page: u32,
+    generation: u64,
+    state: State<'_, AppState>,
+) -> Result<CatalogSongPage, PublicError> {
+    let catalog = state.catalog.clone().ok_or_else(provider_unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || catalog.recommend_songs(kind, page, generation))
+        .await
+        .map_err(|_| provider_unavailable())?
+        .map_err(public_catalog_error)
+}
+
+#[tauri::command]
+pub(crate) async fn catalog_recommend_playlists(
+    page: u32,
+    page_size: u32,
+    generation: u64,
+    state: State<'_, AppState>,
+) -> Result<CatalogEntityPage, PublicError> {
+    let catalog = state.catalog.clone().ok_or_else(provider_unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        catalog.recommend_playlists(page, page_size, generation)
+    })
+    .await
+    .map_err(|_| provider_unavailable())?
+    .map_err(public_catalog_error)
+}
 
 #[tauri::command]
 pub(crate) async fn catalog_song_artists(

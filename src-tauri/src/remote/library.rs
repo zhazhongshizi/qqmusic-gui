@@ -27,6 +27,20 @@ pub(super) enum LibraryRequest {
     Auth {},
     #[serde(rename = "catalog_discover_new_songs")]
     Discover { area: u8, generation: u64 },
+    #[serde(rename = "catalog_search_suggestions")]
+    Suggestions { keyword: String, generation: u64 },
+    #[serde(rename = "catalog_recommend_songs")]
+    RecommendSongs {
+        kind: crate::catalog::RecommendationKind,
+        page: u32,
+        generation: u64,
+    },
+    #[serde(rename = "catalog_recommend_playlists", rename_all = "camelCase")]
+    RecommendPlaylists {
+        page: u32,
+        page_size: u32,
+        generation: u64,
+    },
     #[serde(rename = "catalog_search_songs", rename_all = "camelCase")]
     Search {
         keyword: String,
@@ -219,6 +233,32 @@ impl RemoteLibrary {
                     .map_err(crate::public_catalog_error)?;
                 return Ok(serde_json::json!(artists));
             }
+            LibraryRequest::Suggestions {
+                keyword,
+                generation,
+            } => {
+                let result = self
+                    .catalog
+                    .as_ref()
+                    .ok_or_else(crate::provider_unavailable)?
+                    .search_suggestions(&keyword, generation)
+                    .map_err(crate::public_catalog_error)?;
+                return Ok(serde_json::json!(result));
+            }
+            LibraryRequest::RecommendPlaylists {
+                page,
+                page_size,
+                generation,
+            } => {
+                let result = self
+                    .catalog
+                    .as_ref()
+                    .ok_or_else(crate::provider_unavailable)?
+                    .recommend_playlists(page, page_size, generation)
+                    .map_err(crate::public_catalog_error)?;
+                self.remember_entities(&result);
+                return Ok(serde_json::json!(result));
+            }
             LibraryRequest::SearchEntities {
                 kind,
                 keyword,
@@ -402,6 +442,16 @@ impl RemoteLibrary {
                 .ok_or_else(crate::provider_unavailable)?
                 .discover_new_songs(area, generation)
                 .map_err(crate::public_catalog_error)?,
+            LibraryRequest::RecommendSongs {
+                kind,
+                page,
+                generation,
+            } => self
+                .catalog
+                .as_ref()
+                .ok_or_else(crate::provider_unavailable)?
+                .recommend_songs(kind, page, generation)
+                .map_err(crate::public_catalog_error)?,
             LibraryRequest::Search {
                 keyword,
                 page,
@@ -555,6 +605,9 @@ mod tests {
     fn only_scoped_catalog_requests_are_accepted() {
         assert!(serde_json::from_str::<LibraryRequest>(r#"{"command":"catalog_search_songs","keyword":"test","page":1,"pageSize":20,"generation":1}"#).is_ok());
         for value in [
+            r#"{"command":"catalog_search_suggestions","keyword":"test","generation":1}"#,
+            r#"{"command":"catalog_recommend_songs","kind":"radar","page":2,"generation":1}"#,
+            r#"{"command":"catalog_recommend_playlists","page":2,"pageSize":20,"generation":1}"#,
             r#"{"command":"catalog_search_entities","kind":"albums","keyword":"test","page":1,"pageSize":20,"generation":1}"#,
             r#"{"command":"catalog_album_detail","albumId":"album-1"}"#,
             r#"{"command":"catalog_album_songs","albumId":"album-1","page":1,"pageSize":20,"generation":1}"#,

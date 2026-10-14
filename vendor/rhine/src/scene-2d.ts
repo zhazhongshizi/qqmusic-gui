@@ -201,6 +201,9 @@ export class ArchiveScene2D {
   setArchiveTracks(tracks: readonly ArchiveTrack[]) {
     this.archiveTracks = tracks; this.covers = tracks.map(() => null); this.prints.clear(); this.invalidate();
   }
+  setTitles(titles: readonly string[]) {
+    this.titles = titles; this.prints.clear(); this.invalidate();
+  }
   setArchiveCover(index: number, cover: HTMLImageElement) {
     if (!this.archiveTracks[index]) return;
     this.covers[index] = cover; this.prints.delete(String(index)); this.prints.delete('selected:'+index); this.invalidate();

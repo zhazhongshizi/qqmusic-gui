@@ -6,6 +6,20 @@ import type { LyricLine } from "../player/fixtures";
 import { TapeDeck } from "./TapeDeck";
 
 afterEach(() => { cleanup(); resetPlayerFixture(); });
+it("莱茵旋钮先预览再提交，键盘重复调整只在松键时提交", () => {
+  resetPlayerFixture();
+  const setVolume = vi.spyOn(playerActions, "setVolume");
+  try {
+    render(<TapeDeck onBack={() => {}} onQueue={() => {}} onLyrics={() => {}} />);
+    const slider = screen.getByRole("slider", { name: "音量" });
+    fireEvent.keyDown(slider, { key: "ArrowUp" });
+    fireEvent.change(slider, { target: { value: .8 } });
+    fireEvent.change(slider, { target: { value: .85 } });
+    expect(setVolume).not.toHaveBeenCalled();
+    fireEvent.keyUp(slider, { key: "ArrowUp" }); fireEvent.blur(slider);
+    expect(setVolume).toHaveBeenCalledExactlyOnceWith(.85);
+  } finally { setVolume.mockRestore(); }
+});
 
 it("提供三档音质选择，支持键盘切换和 Escape 返回按钮", async () => {
   resetPlayerFixture();

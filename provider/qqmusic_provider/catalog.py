@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from html import unescape
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from qqmusic_api.algorithms import qrc_decrypt  # type: ignore[import-untyped]
+from qqmusic_api.algorithms import qrc_decrypt
 
 from .session import QQMusicSession
 
@@ -80,11 +80,11 @@ class QQMusicCatalogSource:
             await self._session.close()
 
     def _build_request(self, operation: str, params: Mapping[str, object]) -> Awaitable[object]:
-        from qqmusic_api.core.request import Request  # type: ignore[import-untyped]
-        from qqmusic_api.modules.search import SearchType  # type: ignore[import-untyped]
+        from qqmusic_api.core.request import CgiRequest, HttpRequest
+        from qqmusic_api.modules.search import SearchType
 
         client = cast("Any", self._get_client())
-        request: Request[Any]
+        request: CgiRequest[Any] | HttpRequest[Any]
         if operation == "search.hotkeys":
             request = client.search.get_hotkey()
         elif operation == "search.complete":
@@ -156,7 +156,7 @@ class QQMusicCatalogSource:
             request = client.lyric.get_lyric(cast("str", params["id"]), trans=True, roma=True)
         else:  # pragma: no cover - runtime allowlist prevents this
             raise CatalogFailure(CatalogFailureCode.INVALID_PARAMS)
-        return cast("Awaitable[object]", request.replace(response_model=None))
+        return cast("Awaitable[object]", replace(request, response_model=None))
 
 
 class CatalogService:
@@ -179,7 +179,7 @@ class CatalogService:
 
 def _map_upstream_error(error: Exception) -> CatalogFailure:
     from pydantic import ValidationError
-    from qqmusic_api import (  # type: ignore[import-untyped]
+    from qqmusic_api import (
         ApiDataError,
         BaseApiException,
         CredentialExpiredError,

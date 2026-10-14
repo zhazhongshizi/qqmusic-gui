@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import {
   APP_SNAPSHOT_COMMAND,
   APP_SNAPSHOT_SCHEMA_VERSION,
@@ -96,26 +97,10 @@ class InvalidAppSnapshotError extends Error {
   }
 }
 
+const { exactRecord } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new InvalidAppSnapshotError();
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
-    return invalid();
-  }
-
-  const actualKeys = Object.keys(value);
-  if (actualKeys.length !== keys.length || actualKeys.some((key) => !keys.includes(key))) {
-    return invalid();
-  }
-
-  return value as Record<string, unknown>;
 }
 
 function literal<T extends string | number>(value: unknown, expected: T): T {

@@ -126,8 +126,8 @@ class QQMusicAuthSource:
         self._session = session if session is not None else QQMusicSession(cast("str", device_path))
 
     async def start_qr(self, login_method: str) -> QrArtifact:
-        from qqmusic_api import Credential  # type: ignore[import-untyped]
-        from qqmusic_api.models.login import QRLoginType  # type: ignore[import-untyped]
+        from qqmusic_api import Credential
+        from qqmusic_api.models.login import QRLoginType
 
         login_type = QRLoginType.QQ if login_method == "qq" else QRLoginType.WX
         client = self._session.client()

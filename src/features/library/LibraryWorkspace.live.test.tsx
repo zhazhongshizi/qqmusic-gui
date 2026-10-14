@@ -18,6 +18,7 @@ const {
   replaceMock,
   playMock,
   addToPlaylistMock,
+  setLikedMock,
 } = vi.hoisted(() => ({
   discoverMock: vi.fn(),
   searchMock: vi.fn(),
@@ -29,6 +30,7 @@ const {
   replaceMock: vi.fn(),
   playMock: vi.fn(),
   addToPlaylistMock: vi.fn(),
+  setLikedMock: vi.fn(),
 }));
 
 vi.mock("../../backend/libraryAdapter", () => ({
@@ -38,7 +40,7 @@ vi.mock("../../backend/libraryAdapter", () => ({
   deletePlaylist: vi.fn(),
   addSongsToPlaylist: addToPlaylistMock,
   setPlaylistFavorite: vi.fn(),
-  setSongsLiked: vi.fn(),
+  setSongsLiked: setLikedMock,
 }));
 
 vi.mock("../../backend/catalogAdapter", () => ({
@@ -116,6 +118,7 @@ function renderWorkspace(
 
 describe("live catalog workspace", () => {
   beforeEach(() => {
+    setLikedMock.mockReset().mockResolvedValue({ status: "applied" });
     invalidatePlaylistSongs();
     enqueueManyMock.mockReset();
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
@@ -172,6 +175,20 @@ describe("live catalog workspace", () => {
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 
+  it("桌面喜欢页取消喜欢后读回列表，提交失败不自动重放", async () => {
+    const user = userEvent.setup();
+    renderWorkspace("liked", { state: "authenticated" });
+    const unlike = await screen.findByRole("button", { name: "取消喜欢" });
+    await user.click(unlike);
+    expect(setLikedMock).toHaveBeenCalledExactlyOnceWith([SONG.id], false);
+    await waitFor(() => expect(likedMock).toHaveBeenCalledTimes(2));
+    setLikedMock.mockRejectedValueOnce(new Error("uncertain write"));
+    await user.click(screen.getByRole("button", { name: "取消喜欢" }));
+    expect(await screen.findByText("喜欢状态待核对；应用没有自动重复提交")).toBeInTheDocument();
+    expect(setLikedMock).toHaveBeenCalledTimes(2);
+    expect(likedMock).toHaveBeenCalledTimes(2);
+  });
+
   it("Tauri 窗口读取真实发现页且不显示 fixture 曲目", async () => {
     renderWorkspace();
     expect((await screen.findAllByText("晴天")).length).toBeGreaterThan(0);
@@ -183,7 +200,7 @@ describe("live catalog workspace", () => {
   it("搜索去抖后只保留新 generation，并可加入后交给原生播放器", async () => {
     const user = userEvent.setup();
     renderWorkspace("search");
-    await user.type(screen.getByRole("searchbox"), "晴天");
+    await user.type(screen.getByRole("combobox"), "晴天");
     expect((await screen.findAllByText("晴天")).length).toBeGreaterThan(0);
     expect(searchMock).toHaveBeenCalledWith("晴天", expect.any(Number), 1);
 

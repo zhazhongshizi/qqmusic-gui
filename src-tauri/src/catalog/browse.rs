@@ -94,6 +94,24 @@ impl WireBrowseAlbum {
 }
 
 impl CatalogService {
+    pub fn recommend_playlists(
+        &self,
+        page: u32,
+        page_size: u32,
+        generation: u64,
+    ) -> Result<CatalogEntityPage, CatalogError> {
+        validate_pagination(page, page_size)?;
+        self.entity_page(
+            "recommend.playlists",
+            Map::from_iter([
+                ("page".into(), Value::from(page)),
+                ("pageSize".into(), Value::from(page_size)),
+            ]),
+            CatalogSearchKind::Playlists,
+            generation,
+        )
+    }
+
     fn browse_reply(
         &self,
         method: &'static str,

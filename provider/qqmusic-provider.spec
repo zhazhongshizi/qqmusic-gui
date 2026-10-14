@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
 
 provider_root = Path(SPECPATH).resolve()
@@ -11,7 +11,8 @@ analysis = Analysis(
     [str(provider_root / "frozen_main.py")],
     pathex=[str(provider_root)],
     binaries=[],
-    datas=[],
+    # The handshake reads the installed upstream version through importlib.metadata.
+    datas=copy_metadata("qqmusic-api-python"),
     hiddenimports=collect_submodules("qqmusic_api"),
     hookspath=[],
     hooksconfig={},

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArchiveScene } from "./vendor/scene";
 import { ArchiveScene2D } from "./vendor/scene-2d";
 import type { ArchiveRenderer, RhineFrameLimit } from "./rhineSettings";
-import { setArchiveCount, setArchiveTitles } from "./vendor/data";
+import { setArchiveCount } from "./vendor/data";
 import { qualityPresets, type RenderQuality } from "./vendor/render-quality";
 import { fullMotion, reducedMotion } from "./vendor/motion-preferences";
 import { getCoverImage } from "../../backend/coverAdapter";
@@ -20,6 +20,9 @@ export function ArchiveCanvas({ renderer = "webgl", frameLimit = 60, spatialUpsc
   const opening = useRef(booting);
   const scene = useRef<ArchiveScene | ArchiveScene2D | null>(null);
   const sceneSelection = useRef<number | null>(null);
+  const currentTitles = useRef(titles);
+  currentTitles.current = titles;
+  const titleContents = JSON.stringify(titles);
   const current = useRef({ frameLimit, spatialUpscaling, selected, detail, deck, queueOpen, playing, active, quality, superPerformance, disableCassetteMotionWhilePlaying, reduceCassetteMotionWhilePlaying, onSelect, onOpen, onPlaybackCassetteOpen });
   current.current = { frameLimit, spatialUpscaling, selected, detail, deck, queueOpen, playing, active, quality, superPerformance, disableCassetteMotionWhilePlaying, reduceCassetteMotionWhilePlaying, onSelect, onOpen, onPlaybackCassetteOpen };
   const [error, setError] = useState(false);
@@ -71,8 +74,8 @@ export function ArchiveCanvas({ renderer = "webgl", frameLimit = 60, spatialUpsc
     void (async () => {
       try {
         setArchiveCount(count);
-        setArchiveTitles(titles);
         instance = renderer === "canvas2d" ? new ArchiveScene2D(host, count, titles) : new ArchiveScene(host);
+        instance.setTitles(currentTitles.current);
         instance.onInvalidate = resume;
         changeMotion();
         instance.setQuality(current.current.quality);
@@ -81,6 +84,7 @@ export function ArchiveCanvas({ renderer = "webgl", frameLimit = 60, spatialUpsc
         await instance.load();
         loading = false;
         if (disposed) { release(); return; }
+        instance.setTitles(currentTitles.current);
         // Reapply the latest user settings after the models exist so texture and
         // material quality reach newly loaded assets. Super mode also swaps the
         // loaded cassette materials, so its first call must happen after load.
@@ -134,6 +138,7 @@ export function ArchiveCanvas({ renderer = "webgl", frameLimit = 60, spatialUpsc
       if (!loading) release();
     };
   }, [count, renderer]);
+  useEffect(() => { scene.current?.setTitles(currentTitles.current); }, [titleContents, ready]);
   useEffect(() => { scene.current?.setQuality(quality); }, [quality]);
   useEffect(() => { if (scene.current instanceof ArchiveScene) scene.current.setSpatialUpscaling(spatialUpscaling); }, [spatialUpscaling]);
   useEffect(() => { scene.current?.setSuperPerformance(superPerformance); }, [superPerformance]);

@@ -92,6 +92,10 @@ async function dispatchRemote(command: string, payload: Record<string, unknown>)
     if (connection !== "online") throw new Error("连接已断开，请等待恢复");
     return readJson("/api/library", { command, ...payload });
   }
+  if (["catalog_search_suggestions", "catalog_recommend_songs", "catalog_recommend_playlists"].includes(command)) {
+    if (connection !== "online") throw new Error("连接已断开，请等待恢复");
+    return readJson("/api/library", { command, ...payload });
+  }
   if (["auth_status", "catalog_discover_new_songs", "catalog_search_songs", "catalog_search_entities", "catalog_album_detail", "catalog_album_songs", "catalog_artist_detail", "catalog_artist_songs", "catalog_artist_albums", "library_liked_songs", "library_set_liked", "library_playlists", "catalog_playlist_songs", "local_music_list", "queue_replace", "queue_enqueue_many", "queue_enqueue", "queue_enqueue_next"].includes(command)) {
     if (connection !== "online") throw new Error("连接已断开，请等待恢复");
     const args = command === "queue_enqueue" || command === "queue_enqueue_next" ? { id: (payload.item as { id: string }).id } : (command === "queue_replace" || command === "queue_enqueue_many") ? { ids: (payload.items as Array<{ id: string }>).map(item => item.id) } : payload;
@@ -127,7 +131,7 @@ async function dispatchRemote(command: string, payload: Record<string, unknown>)
         const response = await request(track
           ? `/api/cover?track=${encodeURIComponent(track.id)}&generation=${latest.player.generation}`
           : `/api/library-cover?key=${encodeURIComponent(cacheKey)}&kind=${kind}`);
-        return { mimeType: response.headers.get("content-type"), bytes: Array.from(new Uint8Array(await response.arrayBuffer())) };
+        return { mimeType: response.headers.get("content-type"), bytes: new Uint8Array(await response.arrayBuffer()) };
       } finally {
         const next = waitingCovers.shift();
         if (next) next(); else coverReaders--;

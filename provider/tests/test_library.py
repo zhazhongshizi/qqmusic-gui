@@ -229,9 +229,11 @@ def test_upstream_write_rejection_is_stable_and_not_reported_as_applied() -> Non
 
 
 def test_song_mid_resolution_requires_a_complete_numeric_result() -> None:
+    from qqmusic_api.modules.song import SongQueryInfo
+
     class Query:
-        async def query_song(self, values: list[str]):
-            assert values == ["mid-a", "mid-b"]
+        async def query_song(self, values: list[SongQueryInfo]):
+            assert values == [SongQueryInfo(mid="mid-a"), SongQueryInfo(mid="mid-b")]
             return SimpleNamespace(
                 tracks=[
                     SimpleNamespace(id=101, mid="mid-a", type=1),

@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { invalidateCatalogAccount, updateCatalogAccount } from "./catalogCacheScope";
 import {
   AUTH_COMMANDS,
@@ -49,25 +50,14 @@ const QR_EVENT_ERROR_KEYS = ["state", "sessionId", "code", "retryable"] as const
 const LOGOUT_KEYS = ["upstreamRevoked", "coverCacheCleared"] as const;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
+const { exactRecord } = createSchemaGuards(invalid);
+
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 function invalid(): never {
   throw new AuthAdapterError(AUTH_ERROR_CODES.invalid);
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
 }
 
 function boundedString(value: unknown, maximum: number): string {

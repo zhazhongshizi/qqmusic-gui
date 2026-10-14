@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -63,7 +63,7 @@ class QQMusicPlaybackSource:
         self._session = session if session is not None else QQMusicSession(cast("str", device_path))
 
     async def resolve(self, song_mid: str, qualities: tuple[str, ...]) -> Mapping[str, object]:
-        from qqmusic_api.modules.song import (  # type: ignore[import-untyped]
+        from qqmusic_api.modules.song import (
             SongFileInfo,
             SongFileType,
         )
@@ -119,7 +119,7 @@ class QQMusicPlaybackSource:
             request = client.mv.get_mv_urls([vid])
             # H.264 avoids requiring the optional Windows HEVC extension.
             params = {**request.param, "format": 264, "dolby": 0, "use_ipv6": 0}
-            reply = await request.replace(param=params)
+            reply = await replace(request, param=params)
         except PlaybackFailure:
             raise
         except Exception as error:
@@ -362,7 +362,7 @@ def _mv_playback_urls(item: Any) -> list[str]:
 
 def _map_upstream_error(error: Exception) -> PlaybackFailure:
     from pydantic import ValidationError
-    from qqmusic_api import (  # type: ignore[import-untyped]
+    from qqmusic_api import (
         ApiDataError,
         BaseApiException,
         CredentialExpiredError,

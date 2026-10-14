@@ -14,6 +14,9 @@ it("routes entity browsing and separates artist and album cover caches", async (
   vi.stubGlobal("fetch", fetcher);
   await connectRemote("test-code");
   for (const [command, payload] of [
+    ["catalog_search_suggestions", { keyword: "test", generation: 1 }],
+    ["catalog_recommend_songs", { kind: "radar", page: 2, generation: 1 }],
+    ["catalog_recommend_playlists", { page: 2, pageSize: 20, generation: 1 }],
     ["catalog_search_entities", { kind: "albums", keyword: "test", page: 1, pageSize: 20, generation: 1 }],
     ["catalog_album_detail", { albumId: "same-mid" }],
     ["catalog_album_songs", { albumId: "same-mid", page: 1, pageSize: 20, generation: 1 }],

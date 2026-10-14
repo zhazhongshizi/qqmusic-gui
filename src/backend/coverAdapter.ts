@@ -1,4 +1,5 @@
-import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
+import { createSchemaGuards } from "./schemaGuards";
+import { hasPlaybackTransport, invokePlayback, playbackSessionIdentity } from "./playbackTransport";
 const MAX_COVER_BYTES = 2 * 1024 * 1024;
 const CACHE_KEY = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -19,20 +20,10 @@ export class CoverAdapterError extends Error {
   }
 }
 
+const { exactRecord } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new CoverAdapterError("QMG-COVER-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
 }
 
 function isTauriRuntime(): boolean {
@@ -47,6 +38,12 @@ function parseMimeType(value: unknown): CoverImagePayload["mimeType"] {
 export function parseCoverPayload(value: unknown): CoverImagePayload {
   const record = exactRecord(value, ["mimeType", "bytes"]);
   const mimeType = parseMimeType(record.mimeType);
+  const binary = record.bytes instanceof Uint8Array ? record.bytes
+    : record.bytes instanceof ArrayBuffer ? new Uint8Array(record.bytes) : null;
+  if (binary) {
+    if (!binary.byteLength || binary.byteLength > MAX_COVER_BYTES) return invalid();
+    return { mimeType, bytes: binary };
+  }
   if (!Array.isArray(record.bytes) || record.bytes.length === 0 || record.bytes.length > MAX_COVER_BYTES) {
     return invalid();
   }
@@ -66,15 +63,48 @@ async function invoke(command: string, payload: Record<string, unknown>): Promis
   }
 }
 
-export async function getCoverImage(cacheKey: string): Promise<CoverImagePayload> {
-  if (!CACHE_KEY.test(cacheKey)) return invalid();
-  return parseCoverPayload(await invoke(COVER_COMMAND, { cacheKey }));
+const cachedImages = new Map<string, CoverImagePayload>();
+const pendingImages = new Map<string, Promise<CoverImagePayload>>();
+let cacheSession = playbackSessionIdentity();
+let cachedBytes = 0;
+const MAX_CACHED_BYTES = 32 * 1024 * 1024;
+
+function readImage(cacheKey: string, kind: "album" | "artist"): Promise<CoverImagePayload> {
+  if (!CACHE_KEY.test(cacheKey)) return Promise.reject(new CoverAdapterError("QMG-COVER-002"));
+  const session = playbackSessionIdentity();
+  if (cacheSession !== session) {
+    cacheSession = session;
+    cachedImages.clear(); pendingImages.clear(); cachedBytes = 0;
+  }
+  if (!isTauriRuntime()) return Promise.reject(new CoverAdapterError("QMG-COVER-001"));
+  const key = `${kind}:${cacheKey}`;
+  const cached = cachedImages.get(key);
+  if (cached) {
+    cachedImages.delete(key); cachedImages.set(key, cached);
+    return Promise.resolve(cached);
+  }
+  const existing = pendingImages.get(key);
+  if (existing) return existing;
+  const pending = invoke(COVER_COMMAND, { cacheKey, ...(kind === "artist" ? { kind } : {}) })
+    .then(parseCoverPayload).then(image => {
+      if (session === playbackSessionIdentity() && cacheSession === session) {
+        cachedImages.set(key, image); cachedBytes += image.bytes.byteLength;
+        while (cachedImages.size > 128 || cachedBytes > MAX_CACHED_BYTES) {
+          const oldest = cachedImages.keys().next().value!;
+          cachedBytes -= cachedImages.get(oldest)!.bytes.byteLength;
+          cachedImages.delete(oldest);
+        }
+      }
+      return image;
+    }).finally(() => { if (pendingImages.get(key) === pending) pendingImages.delete(key); });
+  pendingImages.set(key, pending);
+  return pending;
+}
+
+export function getCoverImage(cacheKey: string): Promise<CoverImagePayload> {
+  return readImage(cacheKey, "album");
 }
 
 export async function getArtistImage(avatarCacheKey: string): Promise<CoverImagePayload> {
-  if (!CACHE_KEY.test(avatarCacheKey)) return invalid();
-  return parseCoverPayload(await invoke(COVER_COMMAND, {
-    cacheKey: avatarCacheKey,
-    kind: "artist",
-  }));
+  return readImage(avatarCacheKey, "artist");
 }

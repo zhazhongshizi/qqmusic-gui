@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { getCoverImage } from "../../backend/coverAdapter";
 
@@ -574,7 +574,7 @@ export function useCoverPalette(
             const blobBytes = new ArrayBuffer(payload.bytes.byteLength);
             new Uint8Array(blobBytes).set(payload.bytes);
             objectUrl = URL.createObjectURL(new Blob([blobBytes], { type: payload.mimeType }));
-            void extractPaletteFromImageUrl(objectUrl, track.accent).then((extracted) => {
+            return extractPaletteFromImageUrl(objectUrl, track.accent).then((extracted) => {
               if (!active) return;
               paletteCache.set(cacheKey, extracted);
               setPalette(extracted);
@@ -591,6 +591,7 @@ export function useCoverPalette(
       ).finally(() => {
         if (objectUrl) {
           URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
         }
       });
     } else {
@@ -601,16 +602,18 @@ export function useCoverPalette(
       active = false;
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
       }
     };
   }, [track?.id, track?.coverCacheKey, track?.accent]);
 
   const intensityValue = GLOW_INTENSITY_VALUES[intensityLevel];
+  const style = useMemo(() => getCoverPaletteStyle(palette, intensityValue), [palette, intensityValue]);
 
   return {
     palette,
     intensityValue,
     intensityLevel,
-    style: getCoverPaletteStyle(palette, intensityValue),
+    style,
   };
 }

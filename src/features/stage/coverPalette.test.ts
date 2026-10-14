@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -203,6 +203,37 @@ describe("coverPalette 调色与代表色提取", () => {
     const { result } = renderHook(() => useCoverPalette(null, "off"));
     expect(result.current.palette).toEqual(DEFAULT_PALETTE);
     expect(result.current.intensityValue).toBe(0);
+  });
+  it("封面异步解码结束前不释放 URL，切歌时取消且只释放一次", async () => {
+    const images: Array<{ onload?: () => void; onerror?: () => void }> = [];
+    const OriginalImage = globalThis.Image;
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:delayed-palette");
+    vi.stubGlobal("Image", class { constructor() { images.push(this); } onload?: () => void; onerror?: () => void; src = ""; crossOrigin = ""; });
+    getCoverImageMock.mockResolvedValue({ mimeType: "image/png", bytes: new Uint8Array([1]) });
+    try {
+      const track = { id: "delayed", accent: "#61858b", coverCacheKey: "delayed-cover" };
+      const view = renderHook(({ track }) => useCoverPalette(track), { initialProps: { track } });
+      await act(async () => { await Promise.resolve(); });
+      expect(images).toHaveLength(1);
+      expect(revoke).not.toHaveBeenCalled();
+      const style = view.result.current.style;
+      view.rerender({ track: { ...track } });
+      expect(view.result.current.style).toBe(style);
+      await act(async () => images[0]!.onerror?.());
+      expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:delayed-palette");
+      view.unmount();
+      expect(revoke).toHaveBeenCalledTimes(1);
+      clearPaletteCache(); revoke.mockClear(); images.length = 0;
+      const cancelled = renderHook(() => useCoverPalette(track));
+      await act(async () => { await Promise.resolve(); });
+      cancelled.unmount();
+      await act(async () => images[0]!.onerror?.());
+      expect(revoke).toHaveBeenCalledTimes(1);
+      expect(getCachedPalette("delayed-cover")).toBeUndefined();
+    } finally {
+      vi.stubGlobal("Image", OriginalImage); create.mockRestore(); revoke.mockRestore();
+    }
   });
 
   it("useCoverPalette 响应 track 变化并优先使用缓存", async () => {

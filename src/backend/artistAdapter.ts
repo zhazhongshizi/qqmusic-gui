@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type { ArtistDetail, ArtistRef } from "../contracts/artist";
 import type { CatalogSongPage } from "../contracts/catalog";
@@ -21,18 +22,10 @@ export class ArtistAdapterError extends Error {
 const ARTIST_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const encoder = new TextEncoder();
 
+const { exactRecord } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new ArtistAdapterError("QMG-ARTIST-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" || value === null || Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
 }
 
 function text(value: unknown, maximumBytes: number): string {

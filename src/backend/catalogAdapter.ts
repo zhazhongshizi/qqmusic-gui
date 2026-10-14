@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type {
   CatalogAvailability,
@@ -36,33 +37,11 @@ const AVAILABILITY_KEYS = ["status", "requiresSubscription"] as const;
 const TRACK_ID = /^[A-Za-z0-9_-]+$/;
 const QUALITY_ORDER: readonly CatalogQuality[] = ["flac", "320k", "128k"];
 const MAX_ARTISTS_PER_SONG = 32;
-const encoder = new TextEncoder();
+
+const { exactRecord, unsigned, utf8Text } = createSchemaGuards(invalid);
 
 function invalid(): never {
   throw new CatalogAdapterError("QMG-CATALOG-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" || value === null || Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
-}
-
-function unsigned(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) return invalid();
-  return value as number;
-}
-
-function text(value: unknown, maximumBytes: number, allowEmpty = false): string {
-  if (
-    typeof value !== "string" || (!allowEmpty && value.length === 0) ||
-    encoder.encode(value).byteLength > maximumBytes || /[\r\n\0]/.test(value)
-  ) return invalid();
-  return value;
 }
 
 function parseQuality(value: unknown, index: number): CatalogQualityCandidate {
@@ -222,3 +201,5 @@ export function getPlaylistSongs(
     ...(editableId ? { editableId } : {}),
   });
 }
+
+function text(value: unknown, maximumBytes: number, allowEmpty = false): string { return utf8Text(value, maximumBytes, allowEmpty); }

@@ -1,0 +1,23 @@
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { beginPlaybackSession, notifyPlaybackReconnected } from "../../backend/playbackTransport";
+import type { AuthSnapshot } from "../../contracts/auth";
+import { useAccountLikes } from "./useAccountLikes";
+const actions = vi.hoisted(() => ({ clearAccountLikes: vi.fn(), syncAccountLikes: vi.fn() }));
+vi.mock("./playerStore", () => ({ playerActions: actions }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); });
+it("refreshes on account or playback session changes and clears likes on sign-out", () => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+  const auth = (id: string): AuthSnapshot => ({ state: "authenticated", account: { musicId: id, loginMethod: "qq" } });
+  const view = renderHook(({ snapshot }) => useAccountLikes(snapshot, false), { initialProps: { snapshot: auth("one") } });
+  expect(actions.syncAccountLikes).toHaveBeenCalledTimes(1);
+  view.rerender({ snapshot: auth("one") });
+  expect(actions.syncAccountLikes).toHaveBeenCalledTimes(1);
+  view.rerender({ snapshot: auth("two") });
+  expect(actions.syncAccountLikes).toHaveBeenCalledTimes(2);
+  act(() => { beginPlaybackSession(); notifyPlaybackReconnected(); });
+  expect(actions.syncAccountLikes).toHaveBeenCalledTimes(3);
+  view.rerender({ snapshot: { state: "signedOut" } });
+  expect(actions.clearAccountLikes).toHaveBeenCalled();
+  expect(actions.syncAccountLikes).toHaveBeenCalledTimes(3);
+});

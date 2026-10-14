@@ -9,7 +9,7 @@ const song = { id: "search-song", title: "夜航", artist: "歌手", artists: [{
 const result = { generation: 1, page: 1, hasMore: false, total: 1, items: [song] };
 beforeEach(() => { localStorage.clear(); resetPlayerFixture(); mocks.search.mockResolvedValue(result); mocks.enqueue.mockResolvedValue({}); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
-function submit(query: string) { fireEvent.change(screen.getByRole("textbox", { name: "搜索歌曲" }), { target: { value: query } }); fireEvent.click(screen.getByRole("button", { name: "搜索 ↗" })); }
+function submit(query: string) { fireEvent.change(screen.getByRole("combobox", { name: "搜索歌曲" }), { target: { value: query } }); fireEvent.click(screen.getByRole("button", { name: "搜索 ↗" })); }
 it("试听留在搜索页，封面缺失有占位，历史可再次搜索与清空", async () => {
   const close = vi.fn(), play = vi.spyOn(playerActions, "playTrack");
   render(<ArchiveSearch active onClose={close} />); submit("夜航");

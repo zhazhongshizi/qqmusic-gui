@@ -59,7 +59,7 @@ describe("封面驱动动态视觉集成", () => {
     expect(appShell).toHaveAttribute("data-cover-tone", "light");
 
     await user.click(screen.getByRole("button", { name: "曲库" }));
-    await screen.findByRole("heading", { name: "今日唱片目录" });
+    await screen.findByRole("heading", { name: "发现音乐" });
     expect(appShell).toHaveAttribute("data-cover-tone", "dark");
 
     await user.click(screen.getByRole("button", { name: "返回舞台" }));

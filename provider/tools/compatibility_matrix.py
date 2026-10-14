@@ -17,7 +17,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-SUPPORTED_VERSIONS = ("0.6.9", "0.7.1")
+SUPPORTED_VERSIONS = ("0.6.9", "0.8.2")
 RESULT_FORMAT_VERSION = 1
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -77,27 +77,41 @@ async def live_result(target_version: str, device_path: Path) -> dict[str, objec
         return _result(target_version, "failed", checks)
 
     try:
-        from qqmusic_api import Client  # type: ignore[import-untyped]
+        from qqmusic_api import Client
 
-        client: Any = Client(device_path=str(device_path), connect_retries=2)
+        if target_version == "0.8.2":
+            # Use the production adapter from this checkout in the isolated candidate venv.
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from qqmusic_provider.session import QQMusicSession
+
+            session = QQMusicSession(device_path)
+            await session.initialize()
+            client: Any = session.client()
+        else:
+            client = Client(device_path=str(device_path), connect_retries=2)
     except Exception as error:
         checks.append(_check("client-construction", "blocked", _stable_error(error)))
         return _result(target_version, "blocked", checks)
 
     try:
-        transport = getattr(client, "_session", None)
+        if target_version == "0.8.2":
+            transport = client._engine.transport._client
+            device_store = client._engine._cgi._device_store
+        else:
+            transport = getattr(client, "_session", None)
+            device_store = getattr(client, "_device_store", None)
         if transport is None or not hasattr(transport, "multiplexed"):
             checks.append(
                 _check("transport-compatibility", "failed", "multiplexed control missing")
             )
             return _result(target_version, "failed", checks)
         transport.multiplexed = False
+        transport.trust_env = False
         if transport.multiplexed is not False:
             checks.append(_check("transport-compatibility", "failed", "multiplexed disable failed"))
             return _result(target_version, "failed", checks)
         checks.append(_check("transport-compatibility", "passed", "multiplexing disabled"))
 
-        device_store = getattr(client, "_device_store", None)
         get_device = getattr(device_store, "get_device", None)
         if not callable(get_device):
             checks.append(_check("device-store", "failed", "device store API missing"))
@@ -106,9 +120,12 @@ async def live_result(target_version: str, device_path: Path) -> dict[str, objec
         checks.append(_check("device-store", "passed", "anonymous device initialized"))
 
         try:
-            from qqmusic_api.modules.search import SearchType  # type: ignore[import-untyped]
+            from qqmusic_api.modules.search import SearchType
 
-            raw = await client.search.search("晴天", SearchType.SONG, num=1, page=1)
+            raw = await asyncio.wait_for(
+                client.search.search_by_type("晴天", SearchType.SONG, num=1, page=1),
+                timeout=30,
+            )
             payload = raw.model_dump() if hasattr(raw, "model_dump") else raw
             has_shape = isinstance(payload, dict)
             checks.append(

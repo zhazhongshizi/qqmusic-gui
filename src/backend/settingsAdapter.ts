@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import {
   isPlaybackQuality,
   type PlaybackQuality,
@@ -27,19 +28,9 @@ function invalid(): never {
 }
 
 function exactRecord(value: unknown): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const keys = Object.keys(value);
-  const expected: readonly string[] = "mvFallbackEnabled" in value ? [...SETTINGS_KEYS, "mvFallbackEnabled"] : SETTINGS_KEYS;
-  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
-    return invalid();
-  }
-  return value as Record<string, unknown>;
+  return guards.record(value, SETTINGS_KEYS, ["mvFallbackEnabled"]);
 }
+const guards = createSchemaGuards(invalid);
 
 export function parseSettingsSnapshot(value: unknown): SettingsSnapshot {
   const record = exactRecord(value);

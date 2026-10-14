@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type { LyricTimeline, TimedLyricLine } from "../contracts/lyrics";
 
@@ -22,25 +23,10 @@ const TRACK_ID = /^[A-Za-z0-9_-]+$/;
 const MAX_LINES = 5_000;
 const encoder = new TextEncoder();
 
+const { exactRecord, unsigned } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new LyricsAdapterError("QMG-LYRICS-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
-}
-
-function unsigned(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) return invalid();
-  return value as number;
 }
 
 function boundedText(value: unknown, maximumBytes: number): string {

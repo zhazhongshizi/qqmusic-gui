@@ -56,7 +56,7 @@ from .protocol import (
 from .session import QQMusicSession
 
 _UPSTREAM_DISTRIBUTION = "qqmusic-api-python"
-_UPSTREAM_REQUIRED_VERSION = "0.6.9"
+_UPSTREAM_REQUIRED_VERSION = "0.8.2"
 UPSTREAM_TIMEOUT_SECONDS = 15.0
 # QR status checks are a background task, not ordinary request/response calls.
 # WeChat's upstream check can hold the connection for about 35 seconds.

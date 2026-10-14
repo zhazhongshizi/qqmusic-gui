@@ -16,6 +16,8 @@ const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 mod browse;
 pub use browse::{CatalogAlbum, CatalogEntity, CatalogEntityPage, CatalogSearchKind};
+mod discovery;
+pub use discovery::{CatalogSuggestions, RecommendationKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogError {

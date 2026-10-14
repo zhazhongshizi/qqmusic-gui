@@ -1,3 +1,4 @@
+import { createSchemaGuards } from "./schemaGuards";
 export const SMTC_DYNAMIC_LYRICS_COMMAND = "smtc_dynamic_lyrics_set_enabled" as const;
 
 export interface SmtcDynamicLyricsState {
@@ -14,21 +15,10 @@ export class SmtcDynamicLyricsAdapterError extends Error {
   }
 }
 
+const { exactRecord } = createSchemaGuards(invalid);
+
 function invalid(): never {
   throw new SmtcDynamicLyricsAdapterError("QMG-SMTC-DYNAMIC-LYRICS-002");
-}
-
-function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) return invalid();
-
-  const actual = Object.keys(value);
-  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) return invalid();
-  return value as Record<string, unknown>;
 }
 
 export function parseSmtcDynamicLyricsState(value: unknown): SmtcDynamicLyricsState {

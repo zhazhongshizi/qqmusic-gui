@@ -58,6 +58,21 @@ it("只创建 2D 上下文，可见阵列和转换坐标均保持有限值", () 
   for (const call of transform.mock.calls) expect(call.every(Number.isFinite)).toBe(true);
   Object.assign(context, { transform: original });
 });
+it("同数量标题更新会唤醒场景并重新绘制缓存标签", () => {
+  const OriginalImage = globalThis.Image;
+  vi.stubGlobal("Image", class { src = ""; complete = true; naturalWidth = 200; });
+  scene.dispose(); scene = new ArchiveScene2D(host, 8, ["A", "B"]); scene.revealImmediately();
+  vi.stubGlobal("Image", OriginalImage);
+  const fillText = vi.fn(); Object.assign(context, { fillText });
+  scene.setMotion(reducedMotion()); advance(2);
+  fillText.mockClear();
+  const wake = vi.fn(); scene.onInvalidate = wake;
+  scene.setTitles(["新标题"]);
+  scene.update(time + .1);
+  expect(wake).toHaveBeenCalled();
+  expect(fillText.mock.calls.some(call => String(call[0]).includes("新标题"))).toBe(true);
+  Reflect.deleteProperty(context, "fillText");
+});
 it("2D 不再另设 60 帧上限，遵从共享循环；暂停休眠，封面到达可唤醒", () => {
   scene.setDeck(true, true); advance(3);
   const before = state().renderedFrames;

@@ -42,9 +42,10 @@ class QQMusicSession:
 
     @staticmethod
     def _default_client_factory(device_path: str) -> Any:
-        from qqmusic_api import Client  # type: ignore[import-untyped]
+        from qqmusic_api import Client
+        from qqmusic_api.core.transport import NiquestsTransport
 
-        return Client(device_path=device_path, connect_retries=2)
+        return Client(device_path=device_path, transport=NiquestsTransport(connect_retries=2))
 
     @property
     def generation(self) -> int:
@@ -81,7 +82,10 @@ class QQMusicSession:
     async def _create_client(self, credential: object | None) -> Any:
         client = self._client_factory(str(self._device_path))
         try:
-            transport = getattr(client, "_session", None)
+            # QQMusicApi 0.8 owns its transport and device manager in the request engine.
+            # Validate these pinned integration points before any upstream request.
+            engine = getattr(client, "_engine", None)
+            transport = getattr(getattr(engine, "transport", None), "_client", None)
             if transport is None or not hasattr(transport, "multiplexed"):
                 raise SessionCompatibilityFailure("multiplexed_control_missing")
             transport.multiplexed = False
@@ -95,7 +99,7 @@ class QQMusicSession:
                 transport.trust_env = False
             if credential is not None:
                 client.credential = credential
-            device_store = getattr(client, "_device_store", None)
+            device_store = getattr(getattr(engine, "_cgi", None), "_device_store", None)
             get_device = getattr(device_store, "get_device", None)
             if get_device is None:
                 raise SessionCompatibilityFailure("device_store_missing")

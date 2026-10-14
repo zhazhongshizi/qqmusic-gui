@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import pytest
@@ -214,17 +215,16 @@ async def test_upstream_authentication_failure_does_not_attempt_mv() -> None:
 
 @pytest.mark.anyio
 async def test_live_adapter_requests_h264_and_joins_cdn_authorization_without_http() -> None:
+    @dataclass
     class Request:
-        def __init__(self) -> None:
-            self.param = {"format": 265, "vids": ["linkedVid"], "dolby": 1, "use_ipv6": 1}
-
-        def replace(self, *, param: dict[str, object]) -> Request:
-            assert param["format"] == 264
-            assert param["dolby"] == 0
-            assert param["use_ipv6"] == 0
-            return self
+        param: dict[str, object] = field(default_factory=lambda: {
+            "format": 265, "vids": ["linkedVid"], "dolby": 1, "use_ipv6": 1,
+        })
 
         def __await__(self):
+            assert self.param["format"] == 264
+            assert self.param["dolby"] == 0
+            assert self.param["use_ipv6"] == 0
             async def response():
                 return SimpleNamespace(data={"linkedVid": SimpleNamespace(
                     duration=182, mp4=[SimpleNamespace(

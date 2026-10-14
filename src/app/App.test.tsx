@@ -37,9 +37,9 @@ describe("黑胶温室应用外壳", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "今日唱片目录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
 
-    const search = screen.getByRole("searchbox", { name: "搜索歌曲、歌手或专辑" });
+    const search = screen.getByRole("combobox", { name: "搜索歌曲、歌手或专辑" });
     await user.type(search, "潮汐");
 
     await waitFor(() => {
@@ -80,7 +80,7 @@ describe("黑胶温室应用外壳", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "今日唱片目录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
     act(() => playerActions.clearQueue());
     await user.click(screen.getByRole("button", { name: "更多" }));
     expect(screen.getByRole("region", { name: "设置" })).toBeVisible();

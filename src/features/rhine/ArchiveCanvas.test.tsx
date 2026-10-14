@@ -2,17 +2,31 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ArchiveCanvas } from "./ArchiveCanvas";
 const mock = vi.hoisted(() => ({ load: vi.fn(), dispose: vi.fn(), update: vi.fn(), select: vi.fn(), setMode: vi.fn(), setDeck: vi.fn(), setTrack: vi.fn(), setPlaybackTrack: vi.fn(), setQuality: vi.fn(), setSuperPerformance: vi.fn(), setDisableCassetteMotionWhilePlaying: vi.fn(), setReduceCassetteMotionWhilePlaying: vi.fn(), resumeUpdates: vi.fn(), cover: vi.fn(), created: vi.fn() }));
-const archiveMock = vi.hoisted(() => ({ tracks: vi.fn(), cover: vi.fn() }));
+const archiveMock = vi.hoisted(() => ({ tracks: vi.fn(), cover: vi.fn(), titles: vi.fn() }));
 vi.mock("../../backend/coverAdapter", () => ({ getCoverImage: mock.cover }));
 vi.mock("./vendor/scene", () => ({ ArchiveScene: class {
   load = mock.load; dispose = mock.dispose; update = mock.update;
   setArchiveTracks = archiveMock.tracks; setArchiveCover = archiveMock.cover;
+  setTitles = archiveMock.titles;
   constructor() { mock.created(this); }
   select = mock.select;
   resumeUpdates = mock.resumeUpdates;
   setReduceCassetteMotionWhilePlaying = mock.setReduceCassetteMotionWhilePlaying; setMotion() {} setQuality = mock.setQuality; setSuperPerformance = mock.setSuperPerformance; setSpatialUpscaling = vi.fn(); setDisableCassetteMotionWhilePlaying = mock.setDisableCassetteMotionWhilePlaying; setMode = mock.setMode; setDeck = mock.setDeck; setTrack = mock.setTrack; setPlaybackTrack = mock.setPlaybackTrack; revealImmediately() {} resize() {}
 } }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); mock.update.mockReset(); mock.setTrack.mockReset(); mock.cover.mockReset(); vi.unstubAllGlobals(); });
+it("同数量标题刷新标签而不重建场景，加载期间使用最新标题", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  let finish!: () => void;
+  mock.load.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const props = { count: 2, selected: 0, detail: false, active: true, onSelect: () => {} };
+  const view = render(<ArchiveCanvas {...props} titles={["旧一", "旧二"]} />);
+  view.rerender(<ArchiveCanvas {...props} titles={["新一", "新二"]} />);
+  await act(async () => finish());
+  expect(archiveMock.titles).toHaveBeenLastCalledWith(["新一", "新二"]);
+  view.rerender(<ArchiveCanvas {...props} titles={["更名一", "更名二"]} />);
+  expect(archiveMock.titles).toHaveBeenLastCalledWith(["更名一", "更名二"]);
+  expect(mock.created).toHaveBeenCalledTimes(1);
+});
 it("播放视图沿用档案阵列并更新磁带标签，暂停只停止播放波纹", async () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   mock.load.mockResolvedValueOnce(undefined);

@@ -9,6 +9,7 @@ import { CatalogEntityResults, SearchTypeTabs } from "../catalog/CatalogEntityRe
 import type { CatalogEntity, CatalogSearchType } from "../../contracts/catalogBrowse";
 import { Icon } from "../../components/Icon";
 import { SearchHistory, rememberSearch } from "../library/searchHistory";
+import { CatalogSearchInput } from "../catalog/CatalogSearchInput";
 
 export function ArchiveSearch({ active, onClose }: { active: boolean; onClose: () => void }) {
   const [type, setType] = useState<CatalogSearchType>("songs");
@@ -63,7 +64,8 @@ export function ArchiveSearch({ active, onClose }: { active: boolean; onClose: (
   return <section className="rhine-search" aria-label="音乐档案搜索" hidden={!active} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); onClose(); } }}>
     <header className="rhine-search-heading"><button onClick={onClose}>← 返回档案</button><span className="rhine-eyebrow">ARCHIVE / 音乐检索</span></header>
     <form className="rhine-search-form" onSubmit={e => { e.preventDefault(); search(input); }}>
-      <input autoFocus aria-label="搜索歌曲" placeholder="搜索歌曲、歌手或专辑名" maxLength={100} value={input} onChange={e => setInput(e.target.value)} />
+      <CatalogSearchInput autoFocus label="搜索歌曲" placeholder="搜索歌曲、歌手或专辑名"
+        value={input} onChange={setInput} onSubmit={value => search(value)} active={active} />
       <button disabled={!input.trim()} type="submit">搜索 ↗</button>
     </form>
     <SearchTypeTabs value={type} onChange={next => { generation.current++; setType(next); if(request.query)rememberSearch(request.query,next); setRequest(r => ({ ...r, page: 1 })); }} />

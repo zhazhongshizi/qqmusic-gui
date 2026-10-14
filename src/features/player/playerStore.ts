@@ -32,7 +32,7 @@ import {
   nativeSetPreferredQuality,
   nativeSettingsSnapshot,
 } from "../../backend/settingsAdapter";
-import { setSongsLiked } from "../../backend/libraryAdapter";
+import { getLikedSongs, setSongsLiked } from "../../backend/libraryAdapter";
 import type { PlayerSnapshot as NativePlayerSnapshot } from "../../contracts/appSnapshot";
 import { nativeTrack, actualQuality, expectedQuality, qualityFromExpected } from "./nativeTrack";
 import type { TimedLyricLine } from "../../contracts/lyrics";
@@ -59,6 +59,9 @@ export interface PlayerSnapshot {
   readonly defaultQuality: PlaybackQuality;
   readonly requestedQuality: PlaybackQuality;
   readonly likedIds: readonly string[];
+  readonly likesReady?: boolean;
+  readonly likePendingIds?: readonly string[];
+  readonly likeNotice?: string | null;
   readonly playbackError: PlaybackErrorState | null;
 }
 
@@ -110,6 +113,9 @@ let nativeSessionIdentity = playbackSessionIdentity();
 let lastNativeQueue: QueueSnapshot | undefined;
 let playbackRetry: (() => Promise<void>) | null = null;
 let nativeFailureKey: string | null = null;
+let likesEpoch = 0;
+let likesReadVersion = 0;
+const likesEdits = new Map<string, boolean>();
 type OperationDomain = "source" | "transport" | "seek" | "volume" | "mode" | "queue" | "like" | "quality";
 const operationVersions: Record<OperationDomain, number> = {
   source: 0,
@@ -122,6 +128,9 @@ const operationVersions: Record<OperationDomain, number> = {
   quality: 0,
 };
 const listeners = new Set<() => void>();
+const pendingControls: Partial<Record<OperationDomain, number>> = {};
+type ControlVersions = Pick<typeof operationVersions, "seek" | "volume">;
+const controlVersions = (): ControlVersions => ({ seek: operationVersions.seek, volume: operationVersions.volume });
 
 function emit(nextSnapshot: PlayerSnapshot) {
   const keys = Object.keys(nextSnapshot) as (keyof PlayerSnapshot)[];
@@ -137,12 +146,14 @@ function applyNative(
   mode?: PlaybackMode,
   requestedQuality?: PlaybackQuality,
   lyricOffsetMs?: number,
+  controls: ControlVersions = controlVersions(),
 ) {
   if (nativeSessionIdentity !== playbackSessionIdentity()) {
     nativeSessionIdentity = playbackSessionIdentity();
     lastNativeQueue = undefined;
     nativeFailureKey = null;
     playbackRetry = null;
+    delete pendingControls.seek; delete pendingControls.volume;
     snapshot = { ...initialSnapshot, queue: [], positionMs: 0, likedIds: [] };
   }
   if (snapshot.nativeMode && player.generation < snapshot.generation) return;
@@ -223,13 +234,17 @@ function applyNative(
     queue: nextQueue,
     currentIndex,
     isPlaying: player.state === "playing" || player.state === "loading",
-    positionMs: player.positionMs,
-    volume: player.volume,
-    muted: player.muted,
+    positionMs: snapshot.generation === player.generation && currentTrackFrom(snapshot)?.id === updatedCurrent?.id
+      && (pendingControls.seek !== undefined || controls.seek !== operationVersions.seek) ? snapshot.positionMs : player.positionMs,
+    volume: pendingControls.volume !== undefined || controls.volume !== operationVersions.volume ? snapshot.volume : player.volume,
+    muted: pendingControls.volume !== undefined || controls.volume !== operationVersions.volume ? snapshot.muted : player.muted,
     mode: mode ?? (snapshot.nativeMode ? snapshot.mode : "sequence"),
     defaultQuality: snapshot.defaultQuality,
     requestedQuality: currentRequestedQuality,
-    likedIds: snapshot.nativeMode ? snapshot.likedIds : [],
+    likedIds: snapshot.nativeMode || snapshot.likesReady ? snapshot.likedIds : [],
+    likesReady: snapshot.likesReady,
+    likePendingIds: snapshot.likePendingIds,
+    likeNotice: snapshot.likeNotice,
     playbackError,
   });
 }
@@ -241,11 +256,12 @@ async function refreshNative(
   requestedQuality?: PlaybackQuality,
 ) {
   const identity = playbackSessionIdentity();
+  const controls = controlVersions();
   const [nextQueue, player] = await Promise.all([
     queue ? Promise.resolve(queue) : nativeQueueSnapshot(),
     playback ? Promise.resolve(playback.player) : nativePlayerSnapshot(),
   ]);
-  if (identity === playbackSessionIdentity() && isCurrent()) applyNative(nextQueue, player, playback?.quality, undefined, requestedQuality);
+  if (identity === playbackSessionIdentity() && isCurrent()) applyNative(nextQueue, player, playback?.quality, undefined, requestedQuality, undefined, controls);
 }
 
 function applyControl(
@@ -293,6 +309,7 @@ function reportPlaybackError(error: unknown, retry?: () => Promise<void>) {
 function runNative(domain: OperationDomain, operation: (isCurrent: () => boolean) => Promise<void>): Promise<void> {
   const invoke = async (): Promise<void> => {
     const version = ++operationVersions[domain];
+    if (domain === "seek" || domain === "volume") pendingControls[domain] = version;
     const identity = playbackSessionIdentity();
     const isCurrent = () => operationVersions[domain] === version && identity === playbackSessionIdentity();
     try {
@@ -300,6 +317,8 @@ function runNative(domain: OperationDomain, operation: (isCurrent: () => boolean
       if (isCurrent()) clearPlaybackError();
     } catch (error) {
       if (isCurrent()) reportPlaybackError(error, invoke);
+    } finally {
+      if (pendingControls[domain] === version) delete pendingControls[domain];
     }
   };
   return invoke();
@@ -523,33 +542,39 @@ export const playerActions = {
     if (!track) return;
     const nextPosition = Math.max(0, Math.min(positionMs, track.durationMs));
     if (snapshot.nativeMode) {
+      const previousPosition = snapshot.positionMs;
+      const generation = snapshot.generation;
       runNative("seek", async (isCurrent) => {
-        const player = await nativeSeek(nextPosition);
-        applyControl(player, "seek", isCurrent);
+        emit({ ...snapshot, positionMs: nextPosition });
+        try {
+          const player = await nativeSeek(nextPosition);
+          applyControl(player, "seek", isCurrent);
+        } catch (error) {
+          if (isCurrent() && generation === snapshot.generation && currentTrackFrom(snapshot)?.id === track.id) emit({ ...snapshot, positionMs: previousPosition });
+          throw error;
+        }
       });
       return;
     }
     emit({ ...snapshot, positionMs: nextPosition });
   },
   seekBy(deltaMs: number) {
-    const track = currentTrackFrom(snapshot);
-    if (!track) return;
-    const nextPosition = Math.max(0, Math.min(snapshot.positionMs + deltaMs, track.durationMs));
-    if (snapshot.nativeMode) {
-      runNative("seek", async (isCurrent) => {
-        const player = await nativeSeek(nextPosition);
-        applyControl(player, "seek", isCurrent);
-      });
-      return;
-    }
-    emit({ ...snapshot, positionMs: nextPosition });
+    playerActions.seek(snapshot.positionMs + deltaMs);
   },
   setVolume(volume: number) {
     if (snapshot.nativeMode) {
+      const previous = { volume: snapshot.volume, muted: snapshot.muted };
       runNative("volume", async (isCurrent) => {
-        if (snapshot.muted) await nativeSetMuted(false);
-        const player = await nativeSetVolume(Math.max(0, Math.min(volume, 1)));
-        applyControl(player, "volume", isCurrent);
+        emit({ ...snapshot, volume: Math.max(0, Math.min(volume, 1)), muted: false });
+        try {
+          if (previous.muted) await nativeSetMuted(false);
+          if (!isCurrent()) return;
+          const player = await nativeSetVolume(Math.max(0, Math.min(volume, 1)));
+          applyControl(player, "volume", isCurrent);
+        } catch (error) {
+          if (isCurrent()) emit({ ...snapshot, ...previous });
+          throw error;
+        }
       });
       return;
     }
@@ -624,15 +649,65 @@ export const playerActions = {
       return;
     }
 
-    const track = currentTrackFrom(snapshot);
-    if (!track || track.id !== trackId) return;
-    const version = ++operationVersions.like;
-    const previousLikedIds = snapshot.likedIds;
-    emit({ ...snapshot, likedIds: nextLiked });
-    void setSongsLiked([trackId], !liked.has(trackId)).catch(() => {
-      if (operationVersions.like !== version || currentTrackFrom(snapshot)?.id !== trackId) return;
-      emit({ ...snapshot, likedIds: previousLikedIds });
-    });
+    if (!snapshot.likesReady) return;
+    void playerActions.setSongLiked(trackId, !liked.has(trackId)).catch(() => {});
+  },
+  clearAccountLikes() {
+    likesEpoch++; likesReadVersion++; likesEdits.clear();
+    emit({ ...snapshot, likedIds: [], likesReady: false, likePendingIds: [], likeNotice: null });
+  },
+  async syncAccountLikes() {
+    const epoch = likesEpoch;
+    const readVersion = ++likesReadVersion;
+    const identity = playbackSessionIdentity();
+    likesEdits.clear();
+    emit({ ...snapshot, likedIds: [], likesReady: false, likeNotice: null });
+    const ids = new Set<string>();
+    try {
+      for (let page = 1; page <= 100; page++) {
+        const result = await getLikedSongs(page, 50, readVersion);
+        if (epoch !== likesEpoch || readVersion !== likesReadVersion || identity !== playbackSessionIdentity()) return;
+        result.items.forEach(song => ids.add(song.id));
+        if (result.hasMore) {
+          if (page === 100) {
+            emit({ ...snapshot, likeNotice: "喜欢列表未完整读取，暂不可切换喜欢状态" });
+            return;
+          }
+          continue;
+        }
+        likesEdits.forEach((liked, id) => { if (liked) ids.add(id); else ids.delete(id); });
+        emit({ ...snapshot, likedIds: [...ids], likesReady: true });
+        return;
+      }
+    } catch {
+      if (epoch === likesEpoch && readVersion === likesReadVersion && identity === playbackSessionIdentity()) {
+        emit({ ...snapshot, likeNotice: "喜欢状态读取失败，请在喜欢页重新核对" });
+      }
+    }
+  },
+  async setSongLiked(trackId: string, liked: boolean) {
+    if (localMusicFormatFromId(trackId) || snapshot.likePendingIds?.includes(trackId)) return false;
+    const epoch = likesEpoch;
+    const identity = playbackSessionIdentity();
+    emit({ ...snapshot, likePendingIds: [...(snapshot.likePendingIds ?? []), trackId], likeNotice: null });
+    try {
+      await setSongsLiked([trackId], liked);
+      if (epoch !== likesEpoch || identity !== playbackSessionIdentity()) return false;
+      likesEdits.set(trackId, liked);
+      const ids = new Set(snapshot.likedIds);
+      if (liked) ids.add(trackId); else ids.delete(trackId);
+      emit({ ...snapshot, likedIds: [...ids] });
+      return true;
+    } catch (error) {
+      if (epoch === likesEpoch && identity === playbackSessionIdentity()) {
+        emit({ ...snapshot, likeNotice: "喜欢状态待核对；未自动重复提交" });
+      }
+      throw error;
+    } finally {
+      if (epoch === likesEpoch && identity === playbackSessionIdentity()) {
+        emit({ ...snapshot, likePendingIds: snapshot.likePendingIds?.filter(id => id !== trackId) });
+      }
+    }
   },
   removeTrack(trackId: string) {
     if (snapshot.nativeMode) {
@@ -699,19 +774,21 @@ export const playerActions = {
     quality?: PlaybackLoadResult["quality"],
   ) {
     const identity = playbackSessionIdentity();
+    const controls = controlVersions();
     const [nextQueue, nextPlayer] = await Promise.all([
       queue ? Promise.resolve(queue) : nativeQueueSnapshot(),
       player ? Promise.resolve(player) : nativePlayerSnapshot(),
     ]);
     if (identity !== playbackSessionIdentity()) return;
-    applyNative(nextQueue, nextPlayer, quality);
+    applyNative(nextQueue, nextPlayer, quality, undefined, undefined, undefined, controls);
     clearPlaybackError();
   },
   async hydrateNativeSession(session?: PlaybackSessionSnapshot) {
     const identity = playbackSessionIdentity();
+    const controls = controlVersions();
     const nextSession = session ?? await nativePlaybackSessionSnapshot(lastNativeQueue);
     if (identity !== playbackSessionIdentity()) return;
-    applyNative(nextSession.queue, nextSession.player, nextSession.actualQuality ?? undefined, nextSession.mode, nextSession.requestedQuality, nextSession.lyricOffsetMs ?? 0);
+    applyNative(nextSession.queue, nextSession.player, nextSession.actualQuality ?? undefined, nextSession.mode, nextSession.requestedQuality, nextSession.lyricOffsetMs ?? 0, controls);
   },
   applyAuthoritativeSession(session: PlaybackSessionSnapshot) {
     applyNative(session.queue, session.player, session.actualQuality ?? undefined, session.mode, session.requestedQuality, session.lyricOffsetMs ?? 0);
@@ -743,11 +820,13 @@ export const playerActions = {
 };
 
 export function resetPlayerFixture() {
+  likesEpoch++; likesReadVersion++; likesEdits.clear();
   nativeSessionIdentity = playbackSessionIdentity();
   lastNativeQueue = undefined;
   playbackRetry = null;
   for (const domain of Object.keys(operationVersions) as OperationDomain[]) {
     operationVersions[domain] = 0;
+    delete pendingControls[domain];
   }
   nativeFailureKey = null;
   emit(initialSnapshot);

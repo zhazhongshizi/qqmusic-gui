@@ -6,11 +6,13 @@ vi.mock("../../backend/coverAdapter", () => ({ getCoverImage: vi.fn() }));
 vi.mock("./vendor/scene", () => ({ ArchiveScene: class {
   constructor(host: HTMLElement) { mocks.three(); host.appendChild(document.createElement("canvas")); }
   load = mocks.load3; dispose = mocks.dispose3; setMode = mocks.mode; setPlaybackTrack = mocks.track;
+  setTitles() {}
   update() { return false; } resumeUpdates() {} select() {} setDeck() {} setTrack() {} setQuality() {} setMotion() {} setSuperPerformance() {} setSpatialUpscaling() {} setDisableCassetteMotionWhilePlaying() {} setReduceCassetteMotionWhilePlaying() {} revealImmediately() {} resize() {}
 } }));
 vi.mock("./vendor/scene-2d", () => ({ ArchiveScene2D: class {
   constructor(host: HTMLElement) { mocks.two(); host.appendChild(document.createElement("canvas")); }
   load = mocks.load2; dispose = mocks.dispose2; setMode = mocks.mode; setPlaybackTrack = mocks.track;
+  setTitles() {}
   update() { return false; } resumeUpdates() {} select() {} setDeck() {} setTrack() {} setQuality() {} setMotion() {} setSuperPerformance() {} setDisableCassetteMotionWhilePlaying() {} setReduceCassetteMotionWhilePlaying() {} revealImmediately() {} resize() {}
 } }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });

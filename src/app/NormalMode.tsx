@@ -17,6 +17,7 @@ import { CachedGlow } from "../features/stage/CachedGlow";
 import { BackendStatus } from "../features/status/BackendStatus";
 import { PLAYBACK_QUALITY_OPTIONS, type PlaybackQuality } from "../contracts/settings";
 import type { AuthSnapshot } from "../contracts/auth";
+import { localMusicFormatFromId } from "../contracts/localMusic";
 import { getCurrentTrack, playerActions, usePlayerSelector, type PlayerSnapshot } from "../features/player/playerStore";
 import type { GlowIntensityLevel } from "../features/stage/coverPalette";
 import { PublicState, type FixtureStatus } from "../features/status/PublicState";
@@ -65,6 +66,9 @@ function TopBar({
   const currentTrack = usePlayerSelector(getCurrentTrack);
   const likedIds = usePlayerSelector(selectLikedIds);
   const nativeMode = usePlayerSelector(selectNativeMode);
+  const likesReady = usePlayerSelector(snapshot => snapshot.likesReady);
+  const likePendingIds = usePlayerSelector(snapshot => snapshot.likePendingIds);
+  const likeNotice = usePlayerSelector(snapshot => snapshot.likeNotice);
   const liked = currentTrack ? likedIds.includes(currentTrack.id) : false;
 
   return (
@@ -89,10 +93,13 @@ function TopBar({
 
       <div className="top-bar__actions">
         <BackendStatus />
-        {view === "stage" && currentTrack && !nativeMode ? (
+        {view === "stage" && likeNotice ? <span role="status">{likeNotice}</span> : null}
+        {view === "stage" && currentTrack && !localMusicFormatFromId(currentTrack.id) ? (
           <button
             aria-label={liked ? `取消喜欢《${currentTrack.title}》` : `喜欢《${currentTrack.title}》`}
             aria-pressed={liked}
+            disabled={nativeMode && (!likesReady || likePendingIds?.includes(currentTrack.id))}
+            title={nativeMode && !likesReady ? "喜欢状态尚未读取，可打开喜欢页重新读取" : undefined}
             className={liked ? "icon-button top-bar__liked" : "icon-button icon-button--quiet"}
             onClick={() => playerActions.toggleLike(currentTrack.id)}
             type="button"

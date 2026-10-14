@@ -187,6 +187,8 @@
 }
 .app-shell.app-shell--normal .catalog-search:focus-within { border-color: var(--paper-muted); box-shadow: 0 0 0 3px rgb(215 230 255 / 14%); color: var(--paper); }
 .app-shell.app-shell--normal .catalog-search input::placeholder { color: var(--patina); opacity: .8; }
+.app-shell.app-shell--normal .catalog-suggestions { background: #242d38; border-color: var(--glass-edge); color: var(--paper); }
+.app-shell.app-shell--normal .recommendation-heading p { color: var(--patina); }
 .app-shell.app-shell--normal .catalog-empty { min-height: 260px; }
 .app-shell.app-shell--normal .catalog-empty p { font-size: 23px; font-weight: 600; letter-spacing: -.025em; }
 .app-shell.app-shell--normal .catalog-empty span { margin-top: 6px; }
