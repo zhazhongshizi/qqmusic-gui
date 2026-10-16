@@ -69,7 +69,7 @@ let cacheSession = playbackSessionIdentity();
 let cachedBytes = 0;
 const MAX_CACHED_BYTES = 32 * 1024 * 1024;
 
-function readImage(cacheKey: string, kind: "album" | "artist"): Promise<CoverImagePayload> {
+function readImage(cacheKey: string, kind: "album" | "artist" | "playlist"): Promise<CoverImagePayload> {
   if (!CACHE_KEY.test(cacheKey)) return Promise.reject(new CoverAdapterError("QMG-COVER-002"));
   const session = playbackSessionIdentity();
   if (cacheSession !== session) {
@@ -85,7 +85,7 @@ function readImage(cacheKey: string, kind: "album" | "artist"): Promise<CoverIma
   }
   const existing = pendingImages.get(key);
   if (existing) return existing;
-  const pending = invoke(COVER_COMMAND, { cacheKey, ...(kind === "artist" ? { kind } : {}) })
+  const pending = invoke(COVER_COMMAND, { cacheKey, ...(kind !== "album" ? { kind } : {}) })
     .then(parseCoverPayload).then(image => {
       if (session === playbackSessionIdentity() && cacheSession === session) {
         cachedImages.set(key, image); cachedBytes += image.bytes.byteLength;
@@ -103,6 +103,10 @@ function readImage(cacheKey: string, kind: "album" | "artist"): Promise<CoverIma
 
 export function getCoverImage(cacheKey: string): Promise<CoverImagePayload> {
   return readImage(cacheKey, "album");
+}
+
+export function getPlaylistImage(cacheKey: string): Promise<CoverImagePayload> {
+  return readImage(cacheKey, "playlist");
 }
 
 export async function getArtistImage(avatarCacheKey: string): Promise<CoverImagePayload> {

@@ -36,7 +36,7 @@ export function useRecommendations({ kind, accountKey, active = true }: {
     return () => { alive = false; generation.current++; };
   }, [key, kind, pageNumber, active]);
   async function act(song: CatalogSong, action: RecommendationAction) {
-    if (pending.current || !current.current.active) return;
+    if (pending.current || !current.current.active) return false;
     pending.current = true; setBusy(true); setMessage({ key, text: "" });
     const epoch = generation.current;
     const isCurrent = () => mounted.current && current.current.active && current.current.key === key && epoch === generation.current;
@@ -44,8 +44,9 @@ export function useRecommendations({ kind, accountKey, active = true }: {
       if (action === "play") await enqueueAndPlayCatalogTrack(song);
       else if (action === "next") await enqueueNextCatalogTrack(song);
       else await enqueueCatalogTrack(song);
-      if (isCurrent()) setMessage({ key, text: action === "play" ? `正在播放：${song.title}` : action === "next" ? `下一首播放：${song.title}` : `已加入队列：${song.title}` });
-    } catch { if (isCurrent()) setMessage({ key, text: "操作失败，请重试" }); }
+      if (isCurrent()) { setMessage({ key, text: action === "play" ? `正在播放：${song.title}` : action === "next" ? `下一首播放：${song.title}` : `已加入队列：${song.title}` }); return true; }
+      return false;
+    } catch { if (isCurrent()) setMessage({ key, text: "操作失败，请重试" }); return false; }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   }
   return {

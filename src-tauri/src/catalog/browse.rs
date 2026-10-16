@@ -22,6 +22,8 @@ pub struct CatalogAlbum {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogPlaylist {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_cache_key: Option<String>,
     pub id: String,
     pub title: String,
     pub description: String,
@@ -198,6 +200,10 @@ impl CatalogService {
                         validate_numeric_id(&playlist.id)
                             .map_err(|_| CatalogError::UpstreamSchemaChanged)?;
                         let result = CatalogPlaylist {
+                            cover_cache_key: playlist
+                                .cover_url
+                                .as_deref()
+                                .and_then(|url| self.covers.as_ref()?.register_playlist(url)),
                             id: playlist.id.clone(),
                             title: playlist.title.clone(),
                             description: playlist.description.clone(),

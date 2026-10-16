@@ -1,8 +1,9 @@
 use std::{
+    collections::BTreeMap,
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
@@ -26,6 +27,7 @@ const ARTIST_COVER_URL_PREFIX: &str = "https://y.gtimg.cn/music/photo_new/T001R3
 enum CoverKind {
     Album,
     Artist,
+    Playlist,
 }
 
 impl CoverKind {
@@ -33,6 +35,7 @@ impl CoverKind {
         match self {
             Self::Album => "album",
             Self::Artist => "artist",
+            Self::Playlist => "playlist",
         }
     }
 
@@ -40,6 +43,7 @@ impl CoverKind {
         match self {
             Self::Album => ALBUM_COVER_URL_PREFIX,
             Self::Artist => ARTIST_COVER_URL_PREFIX,
+            Self::Playlist => "",
         }
     }
 }
@@ -145,6 +149,7 @@ impl CoverTransport for ReqwestCoverTransport {
 }
 
 pub struct CoverService {
+    playlist_urls: Mutex<BTreeMap<String, String>>,
     cache_root: PathBuf,
     resolver: Arc<dyn DnsResolver>,
     transport: Arc<dyn CoverTransport>,
@@ -166,6 +171,7 @@ impl CoverService {
             return Err(CoverError::CacheUnavailable);
         }
         Ok(Self {
+            playlist_urls: Mutex::new(BTreeMap::new()),
             cache_root,
             resolver,
             transport,
@@ -178,6 +184,31 @@ impl CoverService {
 
     pub fn get_artist(&self, raw_key: &str) -> Result<CoverPayload, CoverError> {
         self.get_with_kind(CoverKind::Artist, raw_key)
+    }
+
+    /// Only catalog responses can register URLs. IPC accepts an opaque digest.
+    pub fn register_playlist(&self, url: &str) -> Option<String> {
+        let parsed = Url::parse(url).ok()?;
+        if parsed.scheme() != "https"
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+        {
+            return None;
+        }
+        let key = format!("pl_{:x}", Sha256::digest(url.as_bytes()));
+        let mut urls = self
+            .playlist_urls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if urls.len() >= 2048 && !urls.contains_key(&key) {
+            urls.pop_first();
+        }
+        urls.insert(key.clone(), url.to_owned());
+        Some(key)
+    }
+
+    pub fn get_playlist(&self, raw_key: &str) -> Result<CoverPayload, CoverError> {
+        self.get_with_kind(CoverKind::Playlist, raw_key)
     }
 
     fn get_with_kind(&self, kind: CoverKind, raw_key: &str) -> Result<CoverPayload, CoverError> {
@@ -246,7 +277,16 @@ impl CoverService {
     }
 
     fn trusted_url(&self, kind: CoverKind, key: &str) -> Result<TrustedRemoteUrl, CoverError> {
-        let value = format!("{}{key}.jpg", kind.url_prefix());
+        let value = if kind == CoverKind::Playlist {
+            self.playlist_urls
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(key)
+                .cloned()
+                .ok_or(CoverError::CoverUnavailable)?
+        } else {
+            format!("{}{key}.jpg", kind.url_prefix())
+        };
         TrustedRemoteUrl::validate(&value, RemoteUrlPurpose::Cover, self.resolver.as_ref())
             .map_err(|_| CoverError::UnsafeUrl)
     }
@@ -465,6 +505,46 @@ mod tests {
         assert_eq!(service.get("bad/key"), Err(CoverError::InvalidKey));
         service.clear().expect("clear cache");
         assert_eq!(fs::read_dir(&root).expect("cache entries").count(), 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn playlist_cover_uses_registered_digest_and_reuses_cache() {
+        let root = root("playlist-kind");
+        let transport = Arc::new(FakeTransport::new(vec![jpeg_response()]));
+        let service =
+            CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone())
+                .unwrap();
+        let url = "https://qpic.y.qq.com/music_cover/fixture/300";
+        let key = service.register_playlist(url).unwrap();
+        assert!(!key.contains("http"));
+        assert_eq!(
+            service.get_playlist("unknown"),
+            Err(CoverError::CoverUnavailable)
+        );
+        assert_eq!(
+            service.get_playlist(&key).unwrap(),
+            service.get_playlist(&key).unwrap()
+        );
+        assert_eq!(*transport.calls.lock().unwrap(), vec![url.to_owned()]);
+        assert!(service
+            .register_playlist("http://qpic.y.qq.com/cover")
+            .is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn playlist_urls_still_pass_existing_cover_network_policy() {
+        let root = root("playlist-policy");
+        let transport = Arc::new(FakeTransport::new(vec![jpeg_response()]));
+        let service =
+            CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone())
+                .unwrap();
+        let key = service
+            .register_playlist("https://example.com/private")
+            .unwrap();
+        assert_eq!(service.get_playlist(&key), Err(CoverError::UnsafeUrl));
+        assert!(transport.calls.lock().unwrap().is_empty());
         let _ = fs::remove_dir_all(root);
     }
 

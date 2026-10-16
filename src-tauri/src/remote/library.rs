@@ -141,7 +141,11 @@ impl RemoteLibrary {
                         self.remember_cover("album", key);
                     }
                 }
-                crate::catalog::CatalogEntity::Playlist(_) => {}
+                crate::catalog::CatalogEntity::Playlist(playlist) => {
+                    if let Some(key) = &playlist.cover_cache_key {
+                        self.remember_cover("playlist", key);
+                    }
+                }
             }
         }
     }
@@ -548,7 +552,7 @@ pub(super) async fn cover(
     Query(query): Query<CoverQuery>,
 ) -> Response {
     let kind = query.kind.as_deref().unwrap_or("album");
-    if !matches!(kind, "album" | "artist") {
+    if !matches!(kind, "album" | "artist" | "playlist") {
         return error(StatusCode::NOT_FOUND, "暂无封面");
     }
     let allowed = state.library.as_ref().is_some_and(|library| {
@@ -580,7 +584,8 @@ pub(super) async fn cover(
     };
     match tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;
-        if query.key.starts_with("local_") && query.kind.as_deref() != Some("artist") {
+        if query.key.starts_with("local_") && matches!(query.kind.as_deref(), None | Some("album"))
+        {
             return local
                 .ok_or(crate::cover::CoverError::CoverUnavailable)?
                 .embedded_cover(&query.key)
@@ -588,6 +593,7 @@ pub(super) async fn cover(
         }
         match query.kind.as_deref() {
             Some("artist") => cover.get_artist(&query.key),
+            Some("playlist") => cover.get_playlist(&query.key),
             _ => cover.get(&query.key),
         }
     })

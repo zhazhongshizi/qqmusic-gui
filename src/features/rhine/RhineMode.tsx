@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type Ref } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { getLibraryPlaylists } from "../../backend/libraryAdapter";
 import { getPlaylistSongs } from "../../backend/catalogAdapter";
 import type { AuthSnapshot } from "../../contracts/auth";
@@ -13,6 +13,8 @@ import { getCurrentTrack, playerActions, usePlayerSelector } from "../player/pla
 import { usePlaylistPlayback } from "../library/usePlaylistPlayback";
 import { ScrollingLyrics } from "../stage/ScrollingLyrics";
 import { ArchiveCanvas } from "./ArchiveCanvas";
+import type { DiscoveryHandle } from "./ArchiveDiscovery";
+import type { DiscoveryState, DiscoveryFrame } from "./vendor/discovery-layout";
 import { RhineBoot } from "./RhineBoot";
 import { SongCover } from "./SongCover";
 import { ArchiveSearch } from "./ArchiveSearch";
@@ -151,7 +153,51 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [discoveryVisited, setDiscoveryVisited] = useState(false);
+  const [discoveryClosing, setDiscoveryClosing] = useState(false);
+  const [discoveryInstant, setDiscoveryInstant] = useState(false);
+  const [discoveryShortEntry, setDiscoveryShortEntry] = useState(false);
+  const [discoveryData, setDiscoveryData] = useState<DiscoveryState | null>(null);
+  const discoveryPanel = useRef<DiscoveryHandle>(null);
+  const discoveryInstantRef = useRef(discoveryInstant); discoveryInstantRef.current = discoveryInstant;
+  const discoveryDeckOrigin = useRef(false);
+  const pendingArchiveKind = useRef<PlaylistKind | null>(null);
+  const discoveryScene = useMemo(() => {
+    if (localPage !== "discover" && !discoveryClosing) return null;
+    return { ...(discoveryData ?? { ready: false, key: "", entries: [], selected: null, hovered: null, scroll: 0, top: 166 }),
+      open: localPage === "discover", instant: discoveryInstant, shortEntry: discoveryShortEntry,
+      reduced: settings.superPerformance || (playing && (settings.disableCassetteMotionWhilePlaying || settings.reduceCassetteMotionWhilePlaying)) };
+  }, [localPage, discoveryClosing, discoveryData, discoveryInstant, discoveryShortEntry, settings.superPerformance, playing, settings.disableCassetteMotionWhilePlaying, settings.reduceCassetteMotionWhilePlaying]);
+  const receiveDiscoveryFrame = useCallback((frame: DiscoveryFrame) => {
+    discoveryPanel.current?.frame(frame);
+    if (frame.phase === "closed") {
+      setDiscoveryClosing(false);
+      if(pendingArchiveKind.current){setKind(pendingArchiveKind.current);setPage(1);pendingArchiveKind.current=null;}
+    }
+    if (frame.phase === "ready" && discoveryInstantRef.current) setDiscoveryInstant(false);
+  }, []);
+  function openDiscovery() {
+    setDiscoveryInstant(false);
+    setDiscoveryShortEntry(!!localPage && localPage !== "discover" || search || deck);
+    setDiscoveryVisited(true); setDiscoveryClosing(false);
+    closeSettings(); setSearch(false); setDeck(false); setLyrics(false); setQueue(false); setDetail(false); setLocalPage("discover");
+  }
+  function closeDiscovery() { setDiscoveryInstant(false); setDiscoveryClosing(true); setLocalPage(null); discoveryDeckOrigin.current = false; }
+  function goArchive(next: PlaylistKind) {
+    if(localPage === "discover") { if(next!==kind)pendingArchiveKind.current=next;closeDiscovery();return; }
+    closeSettings();setLocalPage(null);setSearch(false);setDeck(false);setLyrics(false);setQueue(false);setDetail(false);setKind(next);setPage(1);
+  }
+  function discoveryToDeck() { discoveryDeckOrigin.current = true; setDiscoveryClosing(false); setLocalPage(null); setDeck(true); }
+  function backFromDeck() {
+    setDeck(false); setLyrics(false);
+    if (discoveryDeckOrigin.current) { setDiscoveryInstant(true); setDiscoveryVisited(true); setLocalPage("discover"); discoveryDeckOrigin.current = false; }
+  }
   const accountId = auth.state === "authenticated" ? auth.account?.musicId : undefined;
+  useEffect(() => {
+    if(search||settingsOpen||deck||(localPage&&localPage!=="discover")){setDiscoveryClosing(false);pendingArchiveKind.current=null;}
+    if((!deck&&localPage!=="discover")||(localPage&&localPage!=="discover"))discoveryDeckOrigin.current=false;
+  },[search,settingsOpen,deck,localPage]);
+  useEffect(() => { setDiscoveryClosing(false); setDiscoveryData(null); discoveryDeckOrigin.current = false; }, [accountId, auth.state]);
   function closeSettings(restoreFocus = false) {
     artistNavigation.closeArtist(false);
     setSettingsOpen(false);
@@ -175,10 +221,10 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
     <header className="rhine-header" data-tauri-drag-region inert={booting}>
       <div className="rhine-brand"><strong>RHINE LAB</strong><span>MUSIC ARCHIVE / 音乐档案</span></div>
       <nav className="rhine-navigation" aria-label="档案分类">
-        <RhineNavButton icon="cassette-add" label="创建的歌单" shortLabel="我的歌单" active={navigation === "created"} onClick={() => { closeSettings(); setLocalPage(null); setSearch(false); setDeck(false); setLyrics(false); setQueue(false); setDetail(false); setKind("created"); setPage(1); }} />
-        <RhineNavButton icon="cassette-heart" label="收藏的歌单" shortLabel="收藏" active={navigation === "favorite"} onClick={() => { closeSettings(); setLocalPage(null); setSearch(false); setDeck(false); setLyrics(false); setQueue(false); setDetail(false); setKind("favorite"); setPage(1); }} />
+        <RhineNavButton icon="cassette-add" label="创建的歌单" shortLabel="我的歌单" active={navigation === "created"} onClick={() => goArchive("created")} />
+        <RhineNavButton icon="cassette-heart" label="收藏的歌单" shortLabel="收藏" active={navigation === "favorite"} onClick={() => goArchive("favorite")} />
         <RhineNavButton icon="search" label="搜索" shortLabel="搜索" active={navigation === "search"} onClick={() => { closeSettings(); setLocalPage(null); setSearch(true); setDeck(false); setLyrics(false); setQueue(false); }} />
-        <RhineNavButton icon="discovery" label="发现音乐" shortLabel="发现" active={navigation === "discover"} onClick={() => { closeSettings(); setSearch(false); setDeck(false); setLyrics(false); setQueue(false); setDetail(false); setLocalPage("discover"); }} />
+        <RhineNavButton icon="discovery" label="发现音乐" shortLabel="发现" active={navigation === "discover"} onClick={openDiscovery} />
         <RhineNavButton icon="folder-music" label="本地音乐" shortLabel="本地" active={navigation === "local"} onClick={() => { closeSettings(); setSearch(false); setDeck(false); setLyrics(false); setQueue(false); setDetail(false); setLocalPage("local"); }} />
         <RhineNavButton icon="history" label="最近播放" shortLabel="最近" active={navigation === "history"} onClick={() => { closeSettings(); setSearch(false); setDeck(false); setLyrics(false); setQueue(false); setDetail(false); setLocalPage("history"); }} />
         <RhineNavButton icon="library" label="资料库" shortLabel="资料库" active={navigation === "collection"} onClick={() => { closeSettings(); setLocalPage("collection"); }} />
@@ -189,21 +235,25 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
     </header>
     <main className="rhine-workspace" inert={booting} data-detail={detail || lyrics || queue} data-deck={deck} data-search={search && !deck} data-settings={settingsOpen} data-artist={!!artistNavigation.artist}>
       <ArtistNavigationContent rhine artist={artistNavigation.artist} onBack={artistNavigation.closeArtist}>
-      {localPage === "local" ? <Suspense fallback={<p role="status">正在载入本地音乐磁带…</p>}><LocalMusicLibrary rhine={{ component: LocalMusicArchive, renderer: settings.renderer, frameLimit: settings.frameLimit, spatialUpscaling: settings.spatialUpscaling, active: active && !booting && !artistNavigation.artist, quality: settings.quality, superPerformance: settings.superPerformance, onBack: () => setLocalPage(null), onDeck: () => { setLocalPage(null); setSearch(false); setLyrics(false); setQueue(false); setDeck(true); } }} /></Suspense> : localPage === "history" ? <Suspense fallback={<p role="status">正在载入最近播放磁带…</p>}><HistoryArchive renderer={settings.renderer} frameLimit={settings.frameLimit} spatialUpscaling={settings.spatialUpscaling} active={active && !booting && !artistNavigation.artist} quality={settings.quality} superPerformance={settings.superPerformance} onBack={() => setLocalPage(null)} onDeck={() => { setLocalPage(null); setSearch(false); setLyrics(false); setQueue(false); setDeck(true); }} /></Suspense> : localPage ? <section className={`rhine-local-page${localPage === "discover" ? " rhine-discovery-page" : ""}`} aria-label={localPage === "discover" ? "推荐档案" : localPage === "collection" ? "我的资料库" : localPage === "memories" ? "回忆磁带页面" : "听歌统计"}>
-        {localPage !== "discover" && <div className="rhine-local-page-actions"><button onClick={() => setLocalPage(null)}>← 返回档案</button><button onClick={() => { setLocalPage(null); setDeck(true); }}>进入磁带机 ↗</button></div>}
-        <Suspense fallback={<p role="status">正在打开…</p>}>{localPage === "discover" ?
-          <ArchiveDiscovery key={accountId ?? "guest"} accountKey={`${auth.state}:${accountId ?? "guest"}:${authRecovering}`}
-            active={active && !booting && !artistNavigation.artist && !authRecovering}
-            onClose={() => setLocalPage(null)} onDeck={() => { setLocalPage(null); setDeck(true); }}
-            motionDisabled={settings.superPerformance || settings.disableCassetteMotionWhilePlaying || settings.reduceCassetteMotionWhilePlaying} /> : localPage === "collection" ? <PersonalLibrary /> : localPage === "memories" ? <MemoryTapeArchive settings={settings} active={active && !booting && !artistNavigation.artist} /> : <ListeningStatistics />}</Suspense>
-      </section> : <>
-      {!!items.length && <ArchiveCanvas renderer={settings.renderer} frameLimit={settings.frameLimit} spatialUpscaling={settings.spatialUpscaling} booting={booting} key={`${kind}:${page}:${accountId}`} count={items.length} titles={items.map(item => item.title)} quality={settings.quality} superPerformance={settings.superPerformance} disableCassetteMotionWhilePlaying={settings.disableCassetteMotionWhilePlaying} reduceCassetteMotionWhilePlaying={settings.reduceCassetteMotionWhilePlaying} selected={selected} detail={detail || lyrics || queue} deck={deck} queueOpen={queue} playing={playing} track={currentTrack} trackIndex={trackIndex} queueLength={queueLength} active={active && !booting && !settingsOpen && !artistNavigation.artist && (!search || deck)} onSelect={index => { if (!search && !detail && !lyrics && !deck) setSelected(index); }} onOpen={index => { if (!search && !detail && !lyrics && !deck && items[index]) { setSelected(index); setDetail(true); } }} onPlaybackCassetteOpen={() => { setLyrics(false); setQueue(true); }} />}
+      <div className="rhine-shared-stage" hidden={!!localPage && localPage !== "discover"}>
+      {<ArchiveCanvas discovery={discoveryScene} onDiscoveryFrame={receiveDiscoveryFrame} renderer={settings.renderer} frameLimit={settings.frameLimit} spatialUpscaling={settings.spatialUpscaling} booting={booting} key={`${kind}:${page}:${accountId}`} count={Math.max(1, items.length)} titles={items.map(item => item.title)} quality={settings.quality} superPerformance={settings.superPerformance} disableCassetteMotionWhilePlaying={settings.disableCassetteMotionWhilePlaying} reduceCassetteMotionWhilePlaying={settings.reduceCassetteMotionWhilePlaying} selected={selected} detail={detail || lyrics || queue} deck={deck} queueOpen={queue} playing={playing} track={currentTrack} trackIndex={trackIndex} queueLength={queueLength} active={active && !booting && !settingsOpen && !artistNavigation.artist && (!search || deck) && (!localPage || localPage === "discover")} onSelect={index => { if (!localPage && !discoveryClosing && !search && !detail && !lyrics && !deck) setSelected(index); }} onOpen={index => { if (!localPage && !discoveryClosing && !search && !detail && !lyrics && !deck && items[index]) { setSelected(index); setDetail(true); } }} onPlaybackCassetteOpen={() => { setLyrics(false); setQueue(true); }} />}
+      </div>
+      {discoveryVisited && <Suspense fallback={null}><ArchiveDiscovery ref={discoveryPanel} key={accountId ?? "guest"}
+        accountKey={`${auth.state}:${accountId ?? "guest"}:${authRecovering}`}
+        visible={localPage === "discover" || discoveryClosing}
+        active={localPage === "discover" && active && !booting && !artistNavigation.artist && !authRecovering}
+        onSceneChange={setDiscoveryData} onClose={closeDiscovery} onDeck={discoveryToDeck}
+        motionDisabled={settings.superPerformance || (playing && (settings.disableCassetteMotionWhilePlaying || settings.reduceCassetteMotionWhilePlaying))} /></Suspense>}
+      {localPage === "local" ? <Suspense fallback={<p role="status">正在载入本地音乐磁带…</p>}><LocalMusicLibrary rhine={{ component: LocalMusicArchive, renderer: settings.renderer, frameLimit: settings.frameLimit, spatialUpscaling: settings.spatialUpscaling, active: active && !booting && !artistNavigation.artist, quality: settings.quality, superPerformance: settings.superPerformance, onBack: () => setLocalPage(null), onDeck: () => { setLocalPage(null); setSearch(false); setLyrics(false); setQueue(false); setDeck(true); } }} /></Suspense> : localPage === "history" ? <Suspense fallback={<p role="status">正在载入最近播放磁带…</p>}><HistoryArchive renderer={settings.renderer} frameLimit={settings.frameLimit} spatialUpscaling={settings.spatialUpscaling} active={active && !booting && !artistNavigation.artist} quality={settings.quality} superPerformance={settings.superPerformance} onBack={() => setLocalPage(null)} onDeck={() => { setLocalPage(null); setSearch(false); setLyrics(false); setQueue(false); setDeck(true); }} /></Suspense> : localPage && localPage !== "discover" ? <section className="rhine-local-page">
+        <div className="rhine-local-page-actions"><button onClick={() => setLocalPage(null)}>← 返回档案</button><button onClick={() => { setLocalPage(null); setDeck(true); }}>进入磁带机 ↗</button></div>
+        <Suspense fallback={<p role="status">正在打开…</p>}>{localPage === "collection" ? <PersonalLibrary /> : localPage === "memories" ? <MemoryTapeArchive settings={settings} active={active && !booting && !artistNavigation.artist} /> : <ListeningStatistics />}</Suspense>
+      </section> : !localPage && !discoveryClosing ? <>
       <div className="rhine-index"><span>{deck ? "TAPE TRANSPORT" : "COLLECTION"} / {String((deck ? trackIndex : selected) + 1).padStart(2, "0")}</span><i /><span>{deck ? "ANALOG FORM / DIGITAL SOUND" : "音乐，由此展开"}</span></div>
       {(!deck || queue || settingsOpen) && <NowPlaying onOpen={() => { closeSettings(); setQueue(false); setDeck(true); }} />}
       {!search && (authRecovering || loading ? <p className="rhine-empty" role="status">正在读取音乐档案…</p> : auth.state !== "authenticated" ? <div className="rhine-empty"><h2>登录后访问你的音乐档案</h2><button onClick={onAccount}>打开账号</button></div> : error ? <div className="rhine-empty" role="alert">歌单读取失败 <button onClick={() => setRetry(r => r + 1)}>重试</button></div> : !items.length ? <p className="rhine-empty">这里还没有{kind === "created" ? "创建" : "收藏"}的歌单</p> : null)}
       <div hidden={search || deck || lyrics || queue} className="rhine-browse-content">{detail && playlist ? <PlaylistDetail key={playlist.id} playlist={playlist} onBack={() => setDetail(false)} onPlayback={() => setDeck(true)} /> : playlist ? <section className="rhine-selection"><p className="rhine-eyebrow">PLAYLIST / {String(selected + 1).padStart(2, "0")} · ID {playlist.id}</p><h1>{playlist.title}</h1><p>{playlist.songCount} 首歌曲</p><button onClick={() => setDetail(true)}>抽取档案 · 打开歌单 ↗</button></section> : null}</div>
       {search && <ArchiveSearch key={accountId ?? "guest"} active={!deck && !lyrics && !settingsOpen} onClose={() => setSearch(false)} />}
-      {deck && !queue && <TapeDeck playlistTitle={search ? "搜索试听" : playlist?.title} onBack={() => { setDeck(false); setLyrics(false); }} onLyrics={() => setLyrics(v => !v)} onQueue={() => { setLyrics(false); setQueue(true); }} />}
+      {deck && !queue && <TapeDeck playlistTitle={search ? "搜索试听" : playlist?.title} onBack={backFromDeck} onLyrics={() => setLyrics(v => !v)} onQueue={() => { setLyrics(false); setQueue(true); }} />}
       {lyrics && <section className="rhine-document rhine-lyrics" aria-label="当前歌词"><button onClick={() => setLyrics(false)}>← 返回磁带机</button><Lyrics /></section>}
       <QueueDrawer open={queue} onClose={() => setQueue(false)} presentation="rhine-detail" />
       {settingsOpen && <RhineSettingsPanel settings={settings}
@@ -222,7 +272,7 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
         <div className="rhine-card-list" aria-label="选择歌单">{items.map((item, index) => <button key={item.id} aria-pressed={index === selected} onClick={() => setSelected(index)} onDoubleClick={() => { setSelected(index); setDetail(true); }}><span>{String(index + 1).padStart(2, "0")}</span><strong>{item.title}</strong><small>{item.songCount} 首</small></button>)}</div>
         <nav className="rhine-pages" aria-label="歌单分页"><button disabled={page === 1 || loading} onClick={() => setPage(p => p - 1)}>上一页</button><span>第 {page} 页 · 共 {catalog?.total} 个歌单</span><button disabled={!catalog?.hasMore || loading} onClick={() => setPage(p => p + 1)}>下一页</button></nav>
       </div>}
-      </>}
+      </> : null}
       </ArtistNavigationContent>
       {artistNavigation.artist && <NowPlaying onOpen={() => { artistNavigation.closeArtist(false); setLocalPage(null); setQueue(false); setDeck(true); }} />}
     </main>

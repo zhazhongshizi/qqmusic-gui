@@ -143,6 +143,7 @@ pub(crate) async fn cover_get(
     tauri::async_runtime::spawn_blocking(move || match kind.as_deref() {
         None | Some("album") => cover.get(&cache_key),
         Some("artist") => cover.get_artist(&cache_key),
+        Some("playlist") => cover.get_playlist(&cache_key),
         Some(_) => Err(CoverError::InvalidKey),
     })
     .await

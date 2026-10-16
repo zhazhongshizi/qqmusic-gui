@@ -327,3 +327,15 @@ it("late covers wake a sleeping scene and an obsolete track cannot overwrite the
   expect(mock.setTrack).toHaveBeenCalledTimes(calls); expect(clock.frames.size).toBe(0);
   expect(revokeObjectURL).toHaveBeenCalledTimes(2);
 });
+
+it("keeps an invalidation delivered during the last frame instead of losing the return transition", async () => {
+  const clock = scheduler(); mock.load.mockResolvedValueOnce(undefined);
+  mock.update.mockImplementationOnce(() => {
+    const instance = mock.created.mock.calls.at(-1)![0] as {onInvalidate:()=>void};
+    instance.onInvalidate(); return false;
+  }).mockReturnValue(false);
+  render(<ArchiveCanvas count={2} selected={0} detail={false} active onSelect={()=>{}} />);
+  await waitFor(()=>expect(mock.created).toHaveBeenCalledOnce());
+  await act(async()=>{});clock.flush(100);
+  expect(clock.frames.size).toBe(1);clock.flush(200);expect(clock.frames.size).toBe(0);
+});

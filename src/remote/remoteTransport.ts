@@ -116,7 +116,7 @@ async function dispatchRemote(command: string, payload: Record<string, unknown>)
   if (command === "queue_preview_next") return readJson("/api/preview");
   if (command === "lyrics_get") return readJson(`/api/lyrics?track=${encodeURIComponent(String(payload.trackId))}&generation=${payload.generation}`);
   if (command === "cover_get") {
-    const kind = payload.kind === "artist" ? "artist" : "album";
+    const kind = payload.kind === "artist" ? "artist" : payload.kind === "playlist" ? "playlist" : "album";
     const track = kind === "album" ? latest.queue.items.find((item) => item.coverCacheKey === payload.cacheKey) : undefined;
     const cacheKey = String(payload.cacheKey);
     const key = `${kind}:${cacheKey}`;

@@ -36,6 +36,9 @@ it("routes entity browsing and separates artist and album cover caches", async (
   fetcher.mockResolvedValueOnce(new Response(new Uint8Array([2]), { headers: { "content-type": "image/png" } }));
   await invokeRemote("cover_get", { cacheKey: "same-mid" });
   expect(fetcher.mock.calls.at(-1)![0]).toBe("/api/library-cover?key=same-mid&kind=album");
+  fetcher.mockResolvedValueOnce(new Response(new Uint8Array([3]), { headers: { "content-type": "image/png" } }));
+  await invokeRemote("cover_get", {cacheKey:"pl_digest",kind:"playlist"});
+  expect(fetcher.mock.calls.at(-1)![0]).toBe("/api/library-cover?key=pl_digest&kind=playlist");
 });
 
 it("next insertion sends only a catalog ID and preserves authoritative MV quality and offset", async () => {

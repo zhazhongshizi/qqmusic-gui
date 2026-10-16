@@ -9,6 +9,7 @@ export interface CatalogAlbum {
   readonly coverCacheKey?: string;
 }
 export interface CatalogPlaylist {
+  readonly coverCacheKey?: string;
   readonly id: string;
   readonly title: string;
   readonly description: string;

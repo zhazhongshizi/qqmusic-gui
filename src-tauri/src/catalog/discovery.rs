@@ -176,4 +176,23 @@ mod tests {
         }],"page":1,"hasMore":false})));
         assert!(catalog.recommend_playlists(1, 20, 4).is_err());
     }
+
+    #[test]
+    fn playlist_recommendations_export_an_opaque_cover_key_not_the_url() {
+        let root =
+            std::env::temp_dir().join(format!("qqmusic-discovery-cover-{}", uuid::Uuid::new_v4()));
+        let covers = Arc::new(crate::cover::CoverService::new(root.clone()).unwrap());
+        let catalog = CatalogService::new(provider(json!({"items":[{
+            "id":"123","title":"推荐","description":"","coverUrl":"https://qpic.y.qq.com/music_cover/test/300",
+            "songCount":20,"listenCount":100
+        }],"page":1,"hasMore":false}))).with_covers(Some(covers));
+        let result = catalog.recommend_playlists(1, 20, 1).unwrap();
+        assert!(
+            matches!(&result.items[0], CatalogEntity::Playlist(p) if p.cover_cache_key.as_deref().is_some_and(|key| key.starts_with("pl_")))
+        );
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(!json.contains("https://"));
+        assert!(!json.contains("coverUrl"));
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

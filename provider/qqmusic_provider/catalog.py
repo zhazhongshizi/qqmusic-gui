@@ -493,13 +493,32 @@ def _song(value: object) -> dict[str, object]:
 
 def _playlist(value: object) -> dict[str, object]:
     item = _mapping(value)
+    cover_url = _cover(item)
+    nested_cover = item.get("cover")
+    if cover_url is None and isinstance(nested_cover, Mapping):
+        for key in ("default_url", "small_url", "medium_url", "big_url"):
+            candidate = nested_cover.get(key)
+            if not isinstance(candidate, str):
+                continue
+            # QQ still returns HTTP links for these HTTPS-capable image hosts.
+            if candidate.startswith((
+                "http://qpic.y.qq.com/", "http://music-file.y.qq.com/", "http://y.gtimg.cn/",
+            )):
+                candidate = "https://" + candidate[len("http://"):]
+            cover_url = _cover({"coverUrl": candidate})
+            if cover_url is not None:
+                break
     return {
         "id": _entity_id(item, "id", "tid", "dissid"),
         "title": _text(item, "title", "name", "dissname"),
         "description": _description(item, "desc", "description"),
-        "coverUrl": _cover(item),
-        "songCount": _non_negative(item.get("songnum", item.get("songNum"))),
-        "listenCount": _non_negative(item.get("listennum", item.get("playCnt"))),
+        "coverUrl": cover_url,
+        "songCount": _non_negative(
+            item.get("songnum", item.get("songNum", item.get("song_cnt")))
+        ),
+        "listenCount": _non_negative(
+            item.get("listennum", item.get("playCnt", item.get("play_cnt")))
+        ),
     }
 
 

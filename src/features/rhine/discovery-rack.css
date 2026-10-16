@@ -1,0 +1,43 @@
+.rhine-shared-stage { position: absolute; inset: 0; }
+.rhine-mode:has(.rhine-discovery-rack:not([hidden])) { grid-template-columns: minmax(0,1fr); }
+.rhine-shared-stage[hidden], .rhine-discovery-rack[hidden] { display: none; }
+.rhine-discovery-rack { position: absolute; inset: 0; z-index: 4; max-width: none; margin: 0; pointer-events: none; }
+.discovery-rack-heading { position: absolute; inset: 0 0 auto; z-index: 4; padding: 22px 30px 38px; background: linear-gradient(#eae7e0f5 80%,#eae7e000); pointer-events: auto; }
+.discovery-rack-heading .discovery-header { padding-bottom: 12px; }
+.discovery-rack-heading .discovery-header h1 { font-size: 25px; }
+.discovery-rack-pane { position: absolute; inset: 0; }
+.discovery-rack-pane .discovery-toolbar { position: absolute; top: calc(var(--rack-top) - 34px); left: 30px; right: 30px; z-index: 5; margin: 0; pointer-events: auto; font-size: 11px; }
+.discovery-rack-pane .discovery-toolbar > button { position: static; padding: 4px 0; }
+.discovery-rack-scroll { position: absolute; inset: var(--rack-top) 0 48px; overflow-x: hidden; overflow-y: auto; pointer-events: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.discovery-rack-space { position: relative; min-height: 100%; overflow: clip; }
+.rhine-discovery-rack .discovery-rack-hit { position: absolute; border: 0; padding: 0; border-radius: 8px; background: transparent; }
+.rhine-discovery-rack .discovery-rack-hit:hover:not(:disabled) { background: transparent; }
+.rhine-discovery-rack .discovery-rack-hit[aria-hidden="true"] { pointer-events: none; }
+.rhine-discovery-rack[data-phase="moving"] .discovery-rack-hit,
+.rhine-discovery-rack[data-phase="flattening"] .discovery-rack-hit,
+.rhine-discovery-rack[data-phase="waiting"] .discovery-rack-hit { pointer-events: none; }
+.discovery-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.discovery-rack-dossier { position: absolute; z-index: 6; left: 56%; right: 5%; top: calc(var(--rack-top) + 25px); bottom: 64px; max-width: 460px; max-height: 570px; overflow: auto; pointer-events: auto; padding: 28px; background: #f0eee7; border: 1px solid #c7c2b7; border-top: 2px solid var(--rh-accent); box-shadow: 0 14px 42px #3b352c12; }
+.discovery-rack-dossier h2 { font-size: 23px; margin-bottom: 20px; }
+.discovery-rack-dossier .discovery-close { display: block; margin: -12px -12px 12px auto; color: var(--rh-ink-3); }
+.discovery-rack-dossier .discovery-primary { min-height: 42px; }
+.discovery-rack-footer { position: absolute; bottom: 0; left: 0; right: 0; min-height: 44px; z-index: 4; pointer-events: auto; background: #eae7e0ed; border-top: 1px solid var(--rh-edge); text-align: center; }
+.discovery-rack-footer .discovery-pages { border: 0; margin: 0; padding: 0; min-height: 44px; }
+.discovery-rack-footer > span { font-size: 11px; }
+.discovery-rack-state { position: absolute; top: calc(var(--rack-top) + 45px); left: 30px; right: 30px; color: var(--rh-ink-3); text-align: center; pointer-events: auto; }
+.rhine-discovery-rack .discovery-details { position: absolute; top: 90px; bottom: 0; left: 0; right: 0; padding: 24px 40px; overflow: auto; background: #eae7e0; z-index: 5; pointer-events: auto; }
+.rhine-discovery-rack[inert] .discovery-rack-heading,
+.rhine-discovery-rack[inert] .discovery-toolbar,
+.rhine-discovery-rack[inert] .discovery-rack-footer,
+.rhine-discovery-rack[inert] .discovery-rack-dossier { opacity: 0; }
+@media (max-width: 799px) {
+  .discovery-rack-heading { padding: 16px 20px 38px; }
+  .discovery-rack-heading .discovery-header { gap: 10px; }
+  .discovery-rack-heading .discovery-header h1 { font-size: 22px; }
+  .discovery-rack-pane .discovery-toolbar { left: 20px; right: 20px; }
+  .discovery-rack-dossier { left: 8%; right: 8%; top: calc(var(--rack-top) + min(38vh,225px) + 16px); bottom: 52px; padding: 18px; max-width: none; }
+  .discovery-rack-dossier h2 { font-size: 20px; margin-bottom: 12px; }
+  .discovery-rack-dossier dl { margin-bottom: 16px; }
+  .rhine-discovery-rack .discovery-details { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .rhine-discovery-rack * { scroll-behavior: auto; } }

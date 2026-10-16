@@ -34,9 +34,9 @@ function entity(value: unknown): CatalogEntity {
   }
   if (kind === "album") return { kind, ...parseCatalogAlbum(body) };
   if (kind === "playlist") {
-    const p = record(body, ["id", "title", "description", "songCount", "listenCount"]);
+    const p = record(body, ["id", "title", "description", "songCount", "listenCount"], ["coverCacheKey"]);
     const playlistId = id(p.id); if (!/^\d+$/.test(playlistId) || Number(playlistId) <= 0 || !Number.isSafeInteger(Number(playlistId))) return invalid();
-    return { kind, id: playlistId, title: text(p.title), description: text(p.description, 16384, true, true), songCount: uint(p.songCount), listenCount: uint(p.listenCount) };
+    return { kind, id: playlistId, title: text(p.title), description: text(p.description, 16384, true, true), songCount: uint(p.songCount), listenCount: uint(p.listenCount), ...("coverCacheKey" in p ? { coverCacheKey: id(p.coverCacheKey) } : {}) };
   }
   return invalid();
 }

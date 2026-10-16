@@ -401,6 +401,39 @@ def test_new_song_recommendations_are_a_bounded_one_shot_list() -> None:
     assert reply.result["hasMore"] is False
 
 
+@pytest.mark.parametrize(
+    ("cover", "expected"),
+    [
+        ({"default_url": "https://music-file.y.qq.com/songlist/cover.jpg"},
+         "https://music-file.y.qq.com/songlist/cover.jpg"),
+        ({"default_url": "http://qpic.y.qq.com/music_cover/fixture/300?n=1"},
+         "https://qpic.y.qq.com/music_cover/fixture/300?n=1"),
+        ({"small_url": "https://qpic.y.qq.com/music_cover/fixture/300"},
+         "https://qpic.y.qq.com/music_cover/fixture/300"),
+        ({"default_url": "http://y.gtimg.cn/music/photo_new/fixture.jpg?n=1"},
+         "https://y.gtimg.cn/music/photo_new/fixture.jpg?n=1"),
+        ({"default_url": "http://qpic.y.qq.com.attacker.example/cover.jpg"}, None),
+        ({"default_url": "https://qpic.y.qq.com/" + "x" * 2048}, None),
+        (None, None),
+    ],
+)
+def test_recommended_playlist_basic_preserves_nested_cover_and_counts(
+    cover: object, expected: str | None,
+) -> None:
+    reply, _ = _execute(
+        "recommend.playlists", {"page": 1, "pageSize": 20},
+        {"List": [{"Playlist": {"basic": {
+            "tid": 71, "title": "夜航歌单", "cover": cover,
+            "song_cnt": 42, "play_cnt": 12345,
+        }}}], "HasMore": False},
+    )
+    playlist = cast("list[dict[str, object]]", reply.result["items"])[0]
+    assert playlist["coverUrl"] == expected
+    assert playlist["songCount"] == 42
+    assert playlist["listenCount"] == 12345
+    assert reply.warnings == []
+
+
 def test_chart_category_accepts_the_real_zero_group_id() -> None:
     reply, _ = _execute(
         "charts.list",

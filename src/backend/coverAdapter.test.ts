@@ -6,6 +6,7 @@ import {
   CoverAdapterError,
   getArtistImage,
   getCoverImage,
+  getPlaylistImage,
   parseCoverPayload,
 } from "./coverAdapter";
 
@@ -42,6 +43,16 @@ describe("封面 IPC 适配器", () => {
       bytes: new Uint8Array([255, 216, 255, 217]),
     });
     expect(invokeMock).toHaveBeenCalledWith(COVER_COMMAND, { cacheKey: "album-mid-1" });
+  });
+
+  it("isolates playlist cache keys and coalesces their image requests", async () => {
+    setTauriRuntime(true);
+    invokeMock.mockResolvedValue({ mimeType: "image/png", bytes: [137,80,78,71] });
+    await Promise.all([getPlaylistImage("pl_digest"), getPlaylistImage("pl_digest")]);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith(COVER_COMMAND, {cacheKey:"pl_digest",kind:"playlist"});
+    await getCoverImage("pl_digest");
+    expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 
   it("浏览器预览不访问 Tauri，且拒绝未知 MIME、越界字节和路径键", async () => {

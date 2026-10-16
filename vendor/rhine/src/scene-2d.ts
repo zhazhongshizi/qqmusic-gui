@@ -1,4 +1,7 @@
 import { ArchiveDrag, ArchivePlaneMomentum, type DragPosition } from "./archive-drag";
+import * as THREE from "three";
+import { DiscoveryRack } from "./discovery-rack";
+import type { DiscoveryState, DiscoveryFrame } from "./discovery-layout";
 import { COLUMN_SPACING, ROW_SPACING, selectionCell, wrap, type ArchiveCell, type ArchiveNavigation } from "./archive-loop";
 import { baselineSelectionWave, columnStrength, idleWave, settlingWave, INSPECTION_LIFT, damp, smooth, returnStep } from "./motion";
 import { fullMotion, type MotionPreferences } from "./motion-preferences";
@@ -35,6 +38,29 @@ const inside = (p: Point, polygon: Point[]) => {
 
 /** Long-lens perspective with cached material layers; creates only Canvas 2D contexts. */
 export class ArchiveScene2D {
+  private discovery?: DiscoveryRack;
+  private discoveryCamera=new THREE.PerspectiveCamera();
+  private discoverySources: string[]=[];
+  onDiscoveryFrame?: (frame: DiscoveryFrame) => void;
+  setDiscovery(state: DiscoveryState | null) {
+    if(!state) {this.discovery?.dispose();this.discovery=undefined;this.invalidate();return;}
+    if(!this.discovery) {
+      this.cancelPointer();
+      this.presence=1;this.canvas.style.opacity="1";
+      const camera=this.camera??this.cameraTarget();
+      this.discoveryCamera.position.set(camera.eye.x,camera.eye.y,camera.eye.z);
+      this.discoveryCamera.lookAt(camera.aim.x,camera.aim.y,camera.aim.z);
+      this.discoveryCamera.fov=THREE.MathUtils.radToDeg(camera.fov);this.discoveryCamera.aspect=this.width/this.height;
+      this.discoveryCamera.updateProjectionMatrix();this.discoveryCamera.updateMatrixWorld();
+      if(!this.drawnCards.length)this.paint();
+      const sources=[...this.drawnCards].sort((a,b)=>Math.hypot(a.front[0].x-this.width/2,a.front[0].y-this.height/2)-Math.hypot(b.front[0].x-this.width/2,b.front[0].y-this.height/2));
+      this.discoverySources=sources.map(c=>`${c.cell.lane}:${c.cell.row}`);
+      this.discovery=new DiscoveryRack();this.discovery.begin(this.discoveryCamera,sources.map(c=>({position:new THREE.Vector3(c.position.x,c.position.y,c.position.z)})));
+      this.discovery.onFrame=frame=>{this.container.dataset.discovery=frame.phase;this.onDiscoveryFrame?.(frame);};
+    }
+    this.discovery.set({...state,reduced:state.reduced||!this.motion.surfaceTransitions});this.invalidate();
+  }
+  setDiscoveryCover(id:string,image:HTMLImageElement){this.discovery?.cover(id,image);this.invalidate();}
   onInvalidate?: () => void;
   onSelect?: (index: number, cell?: ArchiveCell) => void;
   onOpen?: (index: number) => void;
@@ -209,6 +235,7 @@ export class ArchiveScene2D {
     this.covers[index] = cover; this.prints.delete(String(index)); this.prints.delete('selected:'+index); this.invalidate();
   }
   resize() {
+    if (!this.container.clientWidth || !this.container.clientHeight) return;
     this.width = Math.max(1, this.container.clientWidth); this.height = Math.max(1, this.container.clientHeight);
     const ratio = Math.min(devicePixelRatio || 1, 1.5, Math.sqrt(2_073_600 / (this.width * this.height)));
     this.canvas.width = Math.max(1, Math.floor(this.width * ratio));
@@ -246,7 +273,10 @@ export class ArchiveScene2D {
   private cameraTarget() {
     return archiveCameraTarget(this.width,this.height,this.detail,this.selectedPosition(),this.container.closest<HTMLElement>('[data-layout]')?.dataset.layout==='compact');
   }
-  private frame() {return perspectiveFrame(this.camera??this.cameraTarget(),this.width,this.height,this.detail)}
+  private frame() {
+    if(this.discovery) {const c=this.discoveryCamera,eye=c.position,aim=eye.clone().addScaledVector(c.getWorldDirection(new THREE.Vector3()),140);return perspectiveFrame({eye,aim,fov:THREE.MathUtils.degToRad(c.fov)},this.width,this.height,this.detail);}
+    return perspectiveFrame(this.camera??this.cameraTarget(),this.width,this.height,this.detail);
+  }
   private heightAt(cell: ArchiveCell) {
     const cached=this.fieldCache.get(cell.lane)?.get(cell.row);if(cached!==undefined)return cached;
     const row = cell.row - this.selectedCell.row;
@@ -259,13 +289,14 @@ export class ArchiveScene2D {
     for (const pulse of this.pulses)
       height += baselineSelectionWave(Math.hypot(cell.row - pulse.cell.row, (cell.lane - pulse.cell.lane) * 2.2), this.clock - pulse.time);
     if (this.hover?.lane === cell.lane && this.hover.row === cell.row) height += .28;
+    if(this.discovery)height=lerp(height,-4.6,this.discovery.motion.flatten)-this.discovery.motion.spread*35;
     let lane=this.fieldCache.get(cell.lane);if(!lane)this.fieldCache.set(cell.lane,lane=new Map());lane.set(cell.row,height);
     return height;
   }
   private card(cell: ArchiveCell, frame: ReturnType<ArchiveScene2D["frame"]>): Card {
     const selected=cell.lane===this.selectedCell.lane&&cell.row===this.selectedCell.row;
     const outgoing=selected?undefined:this.outgoing.find(o=>o.cell.lane===cell.lane&&o.cell.row===cell.row);
-    const position={x:(cell.lane-this.focus.lane)*COLUMN_SPACING,y:this.heightAt(cell)+(selected?this.lift:outgoing?.lift.value??0),z:(cell.row-this.focus.row)*ROW_SPACING-2.17};
+    const position={x:(cell.lane-this.focus.lane)*COLUMN_SPACING,y:this.heightAt(cell)+(selected?this.lift:outgoing?.lift.value??0)*(1-(this.discovery?.motion.flatten??0)),z:(cell.row-this.focus.row)*ROW_SPACING-2.17};
     const angle=selected?this.rotation:outgoing?.rotation??0,cos=Math.cos(angle),sin=Math.sin(angle);
     const world=(a:number,b:number,c:number)=>({x:position.x+a*cos+c*sin,y:position.y+b,z:position.z-a*sin+c*cos});
     const project=(a:number,b:number,c:number)=>{const p=world(a,b,c);return frame.project(p.x,p.y,p.z)};
@@ -327,6 +358,7 @@ export class ArchiveScene2D {
       drawTextureQuad(c,this.shadowTexture,[project(0,0),project(1,0),project(1,1),project(0,1)],project);c.globalAlpha=1;
     }
     for(const card of cards) {
+      if(this.discovery&&this.discovery.motion.spread>0&&this.discoverySources.slice(0,this.discovery.state?.entries.length??0).includes(`${card.cell.lane}:${card.cell.row}`))continue;
       const project=card.project;
       this.polygon(card.front,'#dfd7c9');
       if(card.selected||card.texture) {
@@ -360,6 +392,13 @@ export class ArchiveScene2D {
   update(time: number): boolean {
     if (this.disposed) return false;
     const dt = Math.min(.05, Math.max(0, time - (this.last || time)));
+    if(this.discovery) {
+      this.last=time;this.fieldCache.clear();
+      const moving=this.discovery.update(dt,this.width,this.height,this.discoveryCamera);
+      if(this.discovery.motion.spread<1)this.paint();
+      else {this.context.fillStyle="#eae5e1";this.context.fillRect(0,0,this.width,this.height);}
+      this.discovery.paint(this.context,this.discoveryCamera,this.width,this.height);return moving;
+    }
     this.fieldCache.clear();
     for(const o of this.outgoing) {
       o.rotation=returnStep(o.rotation,dt,!this.motion.detailTransition);
@@ -510,6 +549,7 @@ export class ArchiveScene2D {
     }, options);
   }
   dispose() {
+    this.discovery?.dispose();
     this.disposed = true; this.events.abort(); this.cancelPointer(); this.onInvalidate = undefined;
     this.prints.clear(); this.fieldCache.clear(); this.edgeGradients.clear(); this.outgoing=[]; this.covers = []; this.drawnCards = []; this.canvas.remove();
     for (const canvas of [this.canvas,this.front,this.clearFront,this.back,this.sideTexture,this.topTexture,this.shadowTexture,this.coverCanvas,this.labelCanvas,this.archiveLabel]) canvas.width = canvas.height = 1;

@@ -14,6 +14,7 @@ const MV_HOSTS: &[&str] = &["mv.music.tc.qq.com", "mv6.music.tc.qq.com"];
 const COVER_HOSTS: &[&str] = &[
     "y.gtimg.cn",
     "qpic.y.qq.com",
+    "music-file.y.qq.com",
     "thirdqq.qlogo.cn",
     "thirdwx.qlogo.cn",
     "wx.qlogo.cn",
@@ -240,6 +241,21 @@ mod tests {
         ] {
             assert!(TrustedRemoteUrl::validate(value, RemoteUrlPurpose::Media, &resolver).is_err());
         }
+    }
+
+    #[test]
+    fn playlist_image_host_remains_scoped_to_cover_requests() {
+        let resolver = FakeResolver::public();
+        let url = "https://music-file.y.qq.com/songlist/u/fixture.jpg?imageView2/4/w/300/h/300";
+        TrustedRemoteUrl::validate(url, RemoteUrlPurpose::Cover, &resolver)
+            .expect("playlist image host returned by QQ's recommendation service");
+        assert!(TrustedRemoteUrl::validate(url, RemoteUrlPurpose::Media, &resolver).is_err());
+        assert!(TrustedRemoteUrl::validate(
+            "https://music-file.y.qq.com.attacker.example/cover.jpg",
+            RemoteUrlPurpose::Cover,
+            &resolver,
+        )
+        .is_err());
     }
 
     #[test]

@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { DiscoveryRack, DiscoveryBackdrop } from "./discovery-rack";
+import type { DiscoveryState, DiscoveryFrame } from "./discovery-layout";
 import { ArchiveVisibility } from "./archive-visibility";
 import { InstanceUpdates } from "./instance-updates";
 import { RenderState } from "./render-state";
@@ -19,6 +21,7 @@ import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { normalizeQuality, type RenderQuality } from "./render-quality";
 import { applyTextureQuality, resizeQuality } from "./quality-renderer";
 import { CardAppearance } from "./appearance";
+import { cloneDiscoveryCassette } from "./discovery-cassette";
 import { configureInternalOptics } from "./internal-optics";
 import { DecryptionController } from "./decryption";
 import { fileAtSlot, fileLocation } from "./data";
@@ -64,6 +67,30 @@ const ease = (t: number) => {
   return t * t * t * (t * (t * 6 - 15) + 10);
 };
 export class ArchiveScene {
+  private discovery?: DiscoveryRack;
+  private discoveryBackdrop?: DiscoveryBackdrop;
+  private discoveryCamera?: THREE.PerspectiveCamera;
+  onDiscoveryFrame?: (frame: DiscoveryFrame) => void;
+  setDiscovery(state: DiscoveryState | null) {
+    if (!state) {
+      this.discoveryBackdrop?.restore();this.discoveryBackdrop=undefined;
+      if(this.discoveryCamera)this.camera.copy(this.discoveryCamera);
+      this.discovery?.dispose();this.discovery=undefined;this.discoveryCamera=undefined;
+      this.resize();return;
+    }
+    if(!this.discovery) {
+      this.cancelPointer();this.setHover(null);this.canInspect=false;
+      this.discoveryCamera=this.camera.clone();
+      this.discoveryBackdrop=new DiscoveryBackdrop(this.instances,[this.model,...this.outgoing.map(o=>o.group)],this.camera);
+      this.discovery=new DiscoveryRack(() => cloneDiscoveryCassette(this.model,this.appearance,this.superPerformance),
+        (shell,clarity)=>{if(!this.superPerformance)this.appearance.setClarity(shell,clarity);});this.discovery.begin(this.camera,this.discoveryBackdrop.sources);
+      this.scene.add(this.discovery.root);
+      this.resize();
+      this.discovery.onFrame=frame=>{this.container.dataset.discovery=frame.phase;this.onDiscoveryFrame?.(frame);};
+    }
+    this.discovery.set({...state,reduced:state.reduced||this.reduced||this.superPerformance});this.invalidate();
+  }
+  setDiscoveryCover(id: string, image: HTMLImageElement) {this.discovery?.cover(id,image);this.invalidate();}
   private inputEvents = new AbortController();
   onInvalidate?: () => void;
   private sleeping = false;
@@ -93,6 +120,7 @@ export class ArchiveScene {
   }
   revealImmediately() { this.invalidate(); this.reveal = this.targetReveal; }
   dispose() {
+    this.discovery?.dispose();this.discovery=undefined;
     this.onInvalidate = undefined;
     this.inputEvents.abort();
     this.cancelPointer();
@@ -1032,6 +1060,7 @@ export class ArchiveScene {
     this.invalidate();
     const w = this.container.clientWidth,
       h = this.container.clientHeight;
+    if (!w || !h) return;
     const kind = this.container.closest<HTMLElement>("[data-layout]")?.dataset.layout ?? "";
     const displayHeight = this.container.getBoundingClientRect().height;
     if (this.layoutKind === "cinematic" && kind !== "cinematic" && this.displayHeight > 0) {
@@ -1047,7 +1076,7 @@ export class ArchiveScene {
       this.renderer,
       this.composer,
       this.container,
-      this.quality,
+      this.discovery ? {...this.quality, scale: Math.max(100,this.quality.scale)} : this.quality,
       this.superPerformance,
       this.fsr,
       this.spatialUpscaling,
@@ -1071,6 +1100,7 @@ export class ArchiveScene {
     this.camera.updateProjectionMatrix();
   }
   private canBrowse() {
+    if(this.discovery)return false;
     return (
       this.presenceTarget === 1 &&
       !this.archivePlayback &&
@@ -1442,6 +1472,15 @@ export class ArchiveScene {
     this.sleeping = false;
     const elapsed = Math.max(0, time - this.last || 0.016);
     const dt = Math.min(elapsed, 0.05);
+    if(this.discovery&&this.loaded) {
+      this.last=time;this.clock=time;
+      const moving=this.discovery.update(dt,this.container.clientWidth,this.container.clientHeight,this.camera);
+      this.discoveryBackdrop?.update(this.discovery.motion.flatten,this.discovery.motion.spread,this.discovery.state?.entries.length??0);
+      const fog=this.scene.fog;this.scene.fog=null;
+      const floor=this.scene.getObjectByName("archive-floor");if(floor)floor.visible=this.discovery.motion.spread<.2;
+      this.renderer.shadowMap.needsUpdate=true;this.renderer.render(this.scene,this.camera);this.scene.fog=fog;
+      this.sleeping=!moving;return moving;
+    }
     const suppressPlaybackCassetteMotion = this.playbackCassetteMotionSuppressed;
     this.reducedWaveMix = THREE.MathUtils.damp(this.reducedWaveMix, Number(this.reduceCassetteMotionWhilePlaying), 8, dt);
     if (Math.abs(this.reducedWaveMix - Number(this.reduceCassetteMotionWhilePlaying)) < .001) this.reducedWaveMix = Number(this.reduceCassetteMotionWhilePlaying);

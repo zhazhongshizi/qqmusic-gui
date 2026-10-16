@@ -98,11 +98,20 @@ pub struct CatalogSongPage {
 
 pub struct CatalogService {
     provider: Arc<dyn ProviderRequestPort>,
+    covers: Option<Arc<crate::cover::CoverService>>,
 }
 
 impl CatalogService {
     pub fn new(provider: Arc<dyn ProviderRequestPort>) -> Self {
-        Self { provider }
+        Self {
+            provider,
+            covers: None,
+        }
+    }
+
+    pub fn with_covers(mut self, covers: Option<Arc<crate::cover::CoverService>>) -> Self {
+        self.covers = covers;
+        self
     }
 
     pub fn search_songs(

@@ -31,6 +31,17 @@ beforeEach(() => {
   installPlaybackTransport(invoke);
 });
 afterEach(() => { cleanup(); installPlaybackTransport(null); });
+it("reports playback success to the discovery caller but not failure or an inactive view", async () => {
+  const onPlayback=vi.fn();queue.play.mockResolvedValueOnce(undefined);
+  const view=render(<CatalogDetails entity={album} onBack={()=>{}} onPlayback={onPlayback}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"播放 歌曲一"}));
+  await waitFor(()=>expect(onPlayback).toHaveBeenCalledOnce());
+  queue.play.mockRejectedValueOnce(new Error("failed"));fireEvent.click(screen.getByRole("button",{name:"播放 歌曲一"}));
+  await screen.findByText("播放失败，原因显示在播放器");expect(onPlayback).toHaveBeenCalledOnce();
+  let finish!:()=>void;queue.play.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));
+  fireEvent.click(screen.getByRole("button",{name:"播放 歌曲一"}));view.rerender(<CatalogDetails entity={album} onBack={()=>{}} onPlayback={onPlayback} active={false}/>);
+  await act(async()=>finish());expect(onPlayback).toHaveBeenCalledOnce();
+});
 it("keeps descriptions, opens artist albums lazily and returns to the selected tab", async () => {
   render(<CatalogDetails entity={album} onBack={() => {}} />);
   await screen.findByRole("button", { name: "播放 歌曲一" });

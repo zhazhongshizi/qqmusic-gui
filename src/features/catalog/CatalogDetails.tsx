@@ -16,7 +16,7 @@ export function AlbumLink({ track, onOpen }: { track: Pick<CatalogSong, "album" 
   const album = albumFromSong(track);
   return album ? <button className="catalog-table__artist" type="button" aria-label={`查看专辑 ${track.album}`} onClick={() => onOpen(album)}>{track.album}</button> : <>{track.album}</>;
 }
-export function CatalogDetails({ entity, onBack }: { entity: CatalogEntity; onBack: () => void }) {
+export function CatalogDetails({ entity, onBack, onPlayback, active = true }: { entity: CatalogEntity; onBack: () => void; onPlayback?: () => void; active?: boolean }) {
   const [history, setHistory] = useState<readonly CatalogEntity[]>([entity]);
   const [artistTabs, setArtistTabs] = useState<Record<string, "songs" | "albums">>({});
   const current = history.at(-1)!;
@@ -25,11 +25,11 @@ export function CatalogDetails({ entity, onBack }: { entity: CatalogEntity; onBa
   return current.kind === "artist" ? <ArtistPage key={`artist:${current.id}`} artist={current} onBack={back}
     initialTab={artistTabs[current.id] ?? "songs"} onTabChange={tab => setArtistTabs(t => ({ ...t, [current.id]: tab }))}
     onOpenArtist={artist => open({ kind: "artist", ...artist })} onOpenAlbum={open} /> :
-    <CollectionPage key={`${current.kind}:${current.id}`} entity={current} onBack={back} onOpen={open} />;
+    <CollectionPage key={`${current.kind}:${current.id}`} entity={current} onBack={back} onOpen={open} onPlayback={onPlayback} active={active} />;
 }
 
-function CollectionPage({ entity, onBack, onOpen }: {
-  entity: Exclude<CatalogEntity, { kind: "artist" }>; onBack: () => void; onOpen: (entity: CatalogEntity) => void;
+function CollectionPage({ entity, onBack, onOpen, onPlayback, active }: {
+  entity: Exclude<CatalogEntity, { kind: "artist" }>; onBack: () => void; onOpen: (entity: CatalogEntity) => void; onPlayback?: () => void; active: boolean;
 }) {
   const [detail, setDetail] = useState(entity);
   const [pageNumber, setPageNumber] = useState(1);
@@ -41,6 +41,8 @@ function CollectionPage({ entity, onBack, onOpen }: {
   const generation = useRef(0);
   const pending = useRef(false);
   const alive = useRef(true);
+  const currentActive = useRef(active); currentActive.current = active;
+  useEffect(() => { if (!active) generation.current++; }, [active]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
   function load(number: number, epoch: number) {
     return entity.kind === "album" ? getAlbumSongs(entity.id, epoch, number, 20) : getPlaylistSongs(entity.id, epoch, number, 20);
@@ -61,7 +63,7 @@ function CollectionPage({ entity, onBack, onOpen }: {
     return () => { active = false; };
   }, [entity.kind, entity.id, pageNumber, retry]);
   async function act(song: CatalogSong, action: "play" | "next" | "enqueue") {
-    if (pending.current) return;
+    if (pending.current || !currentActive.current) return;
     pending.current = true; setBusy(true); setNotice("");
     const epoch = generation.current;
     try {
@@ -69,13 +71,14 @@ function CollectionPage({ entity, onBack, onOpen }: {
       else if (action === "next") await enqueueNextCatalogTrack(song);
       else await enqueueCatalogTrack(song);
       if (alive.current && epoch === generation.current) setNotice(action === "play" ? `正在播放：${song.title}` : action === "next" ? `下一首播放：${song.title}` : `已加入队列：${song.title}`);
+      if (action === "play" && alive.current && currentActive.current && epoch === generation.current) onPlayback?.();
     } catch { if (alive.current && epoch === generation.current) setNotice(action === "play" ? "播放失败，原因显示在播放器" : "加入队列失败，请重试"); }
     finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   async function playAll() {
-    if (pending.current || !page?.items.length) return;
+    if (pending.current || !currentActive.current || !page?.items.length) return;
     const epoch = generation.current;
-    const isCurrent = () => alive.current && generation.current === epoch;
+    const isCurrent = () => alive.current && currentActive.current && generation.current === epoch;
     pending.current = true; setBusy(true); setNotice("正在准备播放…");
     const songs: CatalogSong[] = []; const seen = new Set<string>();
     let hasMore = true;
@@ -91,6 +94,7 @@ function CollectionPage({ entity, onBack, onOpen }: {
       if (!songs.length) { setNotice("没有可播放的歌曲"); return; }
       const result = await replaceAndPlayCatalogTracks(songs, "preserve", isCurrent);
       if (isCurrent()) setNotice(hasMore || result?.truncated ? `已载入前 ${songs.length} 首并开始播放` : `已载入 ${songs.length} 首并开始播放`);
+      if (result && isCurrent()) onPlayback?.();
     } catch { if (isCurrent()) setNotice("播放全部失败，请检查播放器与队列"); }
     finally { pending.current = false; if (alive.current) setBusy(false); }
   }

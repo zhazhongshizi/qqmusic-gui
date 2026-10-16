@@ -340,7 +340,9 @@ impl AppState {
         );
         let lyrics = Arc::new(LyricService::new(business_provider.clone()));
         state.lyrics = Some(lyrics.clone());
-        state.catalog = Some(Arc::new(CatalogService::new(business_provider.clone())));
+        state.catalog = Some(Arc::new(
+            CatalogService::new(business_provider.clone()).with_covers(state.cover.clone()),
+        ));
         let library = Arc::new(LibraryService::new(business_provider.clone()));
         state.library = Some(library.clone());
         if let Some(persistence) = state.persistence.clone() {

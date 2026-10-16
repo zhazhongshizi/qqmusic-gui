@@ -7,6 +7,12 @@ import { installPlaybackTransport } from "./playbackTransport";
 const album = { id: "album-1", title: "专辑", publishDate: "2026-10-01", description: "第一段\n第二段", coverCacheKey: "album-1" };
 const page = { generation: 7, page: 2, hasMore: false, total: 21, warningCount: 0, items: [{ kind: "album", ...album }] };
 const invoke = vi.fn();
+it("accepts only an optional opaque playlist cover key, retaining strict field validation", () => {
+  const playlist={kind:"playlist",id:"123",title:"推荐",description:"",songCount:5,listenCount:10,coverCacheKey:"pl_digest"};
+  expect(parseCatalogEntityPage({...page,items:[playlist]}).items[0]).toEqual(playlist);
+  expect(()=>parseCatalogEntityPage({...page,items:[{...playlist,coverCacheKey:"https://example.com/image"}]})).toThrow();
+  expect(()=>parseCatalogEntityPage({...page,items:[{...playlist,coverUrl:"https://example.com/image"}]})).toThrow();
+});
 beforeEach(() => { invoke.mockReset(); installPlaybackTransport(invoke); });
 afterEach(() => installPlaybackTransport(null));
 it("preserves multiline descriptions, album references and release dates", () => {
