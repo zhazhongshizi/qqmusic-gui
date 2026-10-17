@@ -32,16 +32,17 @@ function ArtistNames({ track, onOpenArtist }: { track: ArtistTrack; onOpenArtist
     const current = () => alive.current && request === version.current && identity === playbackSessionIdentity();
     setError("");
     try {
-      if (artists?.[index]) { open(artists[index]); return; }
+      if (artists?.[index]) { if (artists[index].id !== "0") open(artists[index]); return; }
       setBusy(true);
       pending.current ??= getSongArtists(track.id);
       const result = await pending.current;
       if (!current()) return;
       setResolved(result);
+      if (result.some(artist => artist.id === "0" && artist.name === names[index])) return;
       // Match the clicked name against this song's artists, never a name search.
-      const matches = result.filter(artist => artist.name === names[index]);
+      const matches = result.filter(artist => artist.id !== "0" && artist.name === names[index]);
       if (matches.length === 1) open(matches[0]!);
-      else if (result.length === 1) open(result[0]!);
+      else if (result.length === 1 && result[0]!.id !== "0") open(result[0]!);
       else setError("请选择对应的歌手。");
     } catch { if (current()) { pending.current = null; setError("歌手资料读取失败，请再点击重试。"); } }
     finally { if (current()) setBusy(false); }
@@ -50,8 +51,8 @@ function ArtistNames({ track, onOpenArtist }: { track: ArtistTrack; onOpenArtist
   return <span className="song-artist-links" aria-busy={busy}>
     {names.map((name, index) => <span key={`${name}:${index}`}>
       {index > 0 && <span aria-hidden="true"> / </span>}
-      <button type="button" className="song-artist-link" aria-label={`查看歌手 ${name}`} aria-disabled={busy}
-        onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); if (!busy) void visit(index); }}>{name}</button>
+      {artists?.[index]?.id === "0" ? name : <button type="button" className="song-artist-link" aria-label={`查看歌手 ${name}`} aria-disabled={busy}
+        onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); if (!busy) void visit(index); }}>{name}</button>}
     </span>)}
     {error && <span className="song-artist-error" role="status">{error}</span>}
   </span>;

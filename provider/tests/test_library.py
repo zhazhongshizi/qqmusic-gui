@@ -149,6 +149,21 @@ def test_liked_songs_share_catalog_dto_and_preserve_partial_item_warnings() -> N
     assert reply.warnings == [{"code": "item_invalid", "entity": "song", "index": 1}]
 
 
+def test_liked_song_keeps_named_credits_without_artist_profiles() -> None:
+    song = _song()
+    song["singer"] = [
+        {"id": 0, "mid": "", "name": "未建主页的署名"},
+        {"id": 201, "mid": "artist-mid-1", "name": "林间电台"},
+    ]
+    reply, _ = _execute("library.liked", {"page": 1, "pageSize": 20}, {"songs": [song]})
+    items = cast("list[dict[str, object]]", reply.result["items"])
+    assert items[0]["artists"] == [
+        {"id": "0", "name": "未建主页的署名"},
+        {"id": "artist-mid-1", "name": "林间电台"},
+    ]
+    assert reply.warnings == []
+
+
 @pytest.mark.parametrize(
     ("operation", "params", "raw", "expected"),
     [

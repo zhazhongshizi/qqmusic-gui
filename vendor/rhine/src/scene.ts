@@ -1475,7 +1475,7 @@ export class ArchiveScene {
     if(this.discovery&&this.loaded) {
       this.last=time;this.clock=time;
       const moving=this.discovery.update(dt,this.container.clientWidth,this.container.clientHeight,this.camera);
-      this.discoveryBackdrop?.update(this.discovery.motion.flatten,this.discovery.motion.spread,this.discovery.state?.entries.length??0);
+      this.discoveryBackdrop?.update(this.discovery.motion,this.discovery.count);
       const fog=this.scene.fog;this.scene.fog=null;
       const floor=this.scene.getObjectByName("archive-floor");if(floor)floor.visible=this.discovery.motion.spread<.2;
       this.renderer.shadowMap.needsUpdate=true;this.renderer.render(this.scene,this.camera);this.scene.fog=fog;

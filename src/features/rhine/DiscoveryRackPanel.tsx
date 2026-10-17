@@ -6,7 +6,7 @@ import { CatalogDetails, AlbumLink } from "../catalog/CatalogDetails";
 import { DiscoveryTabs, DISCOVERY_TABS } from "../catalog/RecommendationPanel";
 import { useRecommendations } from "../catalog/useRecommendations";
 import { Icon } from "../../components/Icon";
-import type { DiscoveryState, DiscoveryFrame } from "./vendor/discovery-layout";
+import { DISCOVERY_PAGE_SIZE, type DiscoveryState, type DiscoveryFrame } from "./vendor/discovery-layout";
 import "./discovery-shelf.css";
 import "./discovery-rack.css";
 
@@ -61,7 +61,7 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
   kind:RecommendationKind;accountKey:string;active:boolean;hidden:boolean;top:number;reduced:boolean;
   onOpen:(entity:CatalogEntity)=>void;onDeck?:()=>void;onSceneChange?:(state:DiscoveryState)=>void;
 }) {
-  const {page,error,pageNumber,busy,notice,act,refresh,goToPage}=useRecommendations({kind,accountKey,active});
+  const {page,error,pageNumber,busy,notice,act,refresh,goToPage}=useRecommendations({kind,accountKey,active,pageSize:DISCOVERY_PAGE_SIZE});
   const [selectedId,setSelected]=useState<string|null>(null),[hovered,setHovered]=useState<string|null>(null),[scroll,setScroll]=useState(0);
   const scroller=useRef<HTMLDivElement>(null),dialog=useRef<HTMLElement>(null),trigger=useRef<HTMLElement|null>(null);
   const items=useMemo(()=>!page?[]:kind==="playlists"?(page as CatalogEntityPage).items.filter(e=>e.kind==="playlist").map(playlist=>({id:`playlist:${playlist.id}`,playlist,song:null})):
@@ -96,14 +96,14 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
       if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
     }}><button className="discovery-close" aria-label="收回磁带" onClick={close}>收回磁带 ×</button>
       <p className="rhine-eyebrow">{selected.song?"TRACK":"PLAYLIST"} / {String(items.findIndex(item=>item.id===selected.id)+1).padStart(2,"0")}</p><h2>{(selected.song??selected.playlist!).title}</h2>
-      {selected.song?<><dl><div><dt>歌手</dt><dd>{selected.song.artists.length?selected.song.artists.map((artist,index)=><Fragment key={`${artist.id}:${index}`}>{index>0&&" / "}<button onClick={()=>onOpen({kind:"artist",...artist})}>{artist.name}</button></Fragment>):selected.song.artist}</dd></div>
+      {selected.song?<><dl><div><dt>歌手</dt><dd>{selected.song.artists.length?selected.song.artists.map((artist,index)=><Fragment key={`${artist.id}:${index}`}>{index>0&&" / "}{artist.id==="0"?artist.name:<button onClick={()=>onOpen({kind:"artist",...artist})}>{artist.name}</button>}</Fragment>):selected.song.artist}</dd></div>
         <div><dt>专辑</dt><dd><AlbumLink track={selected.song} onOpen={onOpen}/></dd></div><div><dt>时长</dt><dd>{entries.find(e=>e.id===selected.id)?.duration??"时长未知"}</dd></div></dl>
         <div className="discovery-dossier-actions"><button className="discovery-primary" disabled={busy||!active} onClick={()=>void play()}><Icon name="play" size={16}/>播放</button><div>
           <button disabled={busy||!active} onClick={()=>void act(selected.song!,"next")}><Icon name="play-next" size={18}/>下一首播放</button><button aria-label="加入队列" disabled={busy||!active} onClick={()=>void act(selected.song!,"enqueue")}>＋ 加入队列</button></div></div></>:
         <><p>{selected.playlist!.songCount} 首歌曲 · {selected.playlist!.listenCount.toLocaleString()} 次播放</p><p className="discovery-description">{selected.playlist!.description}</p><button className="discovery-primary" onClick={()=>onOpen(selected.playlist!)}>查看歌单 ↗</button></>}
       <p className="discovery-notice" role="status">{notice}</p>
     </aside>}
-    <footer className="discovery-rack-footer">{!!page?.warningCount&&<span>部分内容暂时不可用，已显示可用推荐。</span>}{kind!=="guess"&&page&&<nav className="discovery-pages" aria-label="推荐分页">
-      <button disabled={busy||pageNumber===1||!active} onClick={()=>{close();setScroll(0);goToPage(pageNumber-1);}}>上一页</button><span>第 {pageNumber} 页</span><button disabled={busy||!page.hasMore||pageNumber>=100||!active} onClick={()=>{close();setScroll(0);goToPage(pageNumber+1);}}>下一页</button></nav>}</footer>
+    <footer className="discovery-rack-footer">{!!page?.warningCount&&<span>部分内容暂时不可用，已显示可用推荐。</span>}{page&&(kind!=="guess"||page.hasMore||pageNumber>1)&&<nav className="discovery-pages" aria-label="推荐分页">
+      <button disabled={busy||pageNumber===1||!active} onClick={()=>{close();setScroll(0);goToPage(pageNumber-1);}}>上一页</button><span>第 {pageNumber} 页</span><button disabled={busy||!page.hasMore||!active} onClick={()=>{close();setScroll(0);goToPage(pageNumber+1);}}>下一页</button></nav>}</footer>
   </section>;
 }

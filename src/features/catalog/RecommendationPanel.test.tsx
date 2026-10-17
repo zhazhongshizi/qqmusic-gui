@@ -22,6 +22,14 @@ beforeEach(() => {
   mocks.play.mockResolvedValue(undefined); mocks.next.mockResolvedValue(undefined); mocks.enqueue.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
+it("retains a named song credit as text and keeps the profiled artist link",async()=>{
+ const credited={...song,artists:[{id:"0",name:"未建主页的署名"},...song.artists],artist:"未建主页的署名 / 歌手"};
+ mocks.songs.mockImplementation((_kind:string,generation:number)=>Promise.resolve({generation,page:1,hasMore:false,warningCount:0,items:[credited]}));
+ const open=vi.fn();render(<RecommendationPanel kind="radar" accountKey="authenticated:a" onOpen={open}/>);
+ await screen.findByText("推荐曲目");expect(screen.getByText("未建主页的署名")).toBeInTheDocument();
+ expect(screen.queryByRole("button",{name:"未建主页的署名"})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button",{name:"歌手"}));expect(open).toHaveBeenCalledWith({kind:"artist",...song.artists[0]});
+});
 it("loads guessed songs and supports play, enqueue-next and refresh", async () => {
   render(<RecommendationPanel kind="guess" accountKey="authenticated:a" onOpen={() => {}} />);
   fireEvent.click(await screen.findByRole("button", { name: "播放 推荐曲目" }));

@@ -13,7 +13,7 @@
 </div>
 
 
-> 当前版本：**1.2.0**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
+> 当前源码与构建版本：**1.2.1**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
 
 ## 功能
 
@@ -21,7 +21,7 @@
 | --- | --- |
 | 两套界面 | 日常音乐界面与莱茵磁带档案界面，共用账号、队列和播放器 |
 | 登录与目录 | QQ／微信二维码登录；歌曲、歌手、专辑、歌单搜索与详情 |
-| 搜索与推荐 | 搜索联想、猜你喜欢、雷达与推荐歌单；莱茵发现页提供正面磁带陈列架 |
+| 搜索与推荐 | 搜索联想、猜你喜欢、雷达与推荐歌单；莱茵发现页提供每页九格磁带架，不足时以空白磁带占位 |
 | 歌单管理 | 创建／收藏的歌单、喜欢歌曲、添加／移除歌曲、多选批量入队 |
 | 原生播放 | Windows 原生媒体播放器、歌词、进度、音量、上一首／下一首 |
 | 音质 | 无损优先、高品质 320k、标准 128k，受账号权益与服务端限制 |
@@ -69,7 +69,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.1.0；线上发行版本以官方页面为准。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.2.1；线上发行版本以官方页面为准。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider` 文件夹。
 3. 运行 `qqmusic-gui.exe`。发行版包含 Python Provider，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。

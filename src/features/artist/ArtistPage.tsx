@@ -235,7 +235,7 @@ export function ArtistPage({ artist, onBack, onOpenArtist, onOpenAlbum, initialT
                     <td><span className="artist-page__artists">{artistRefsFor(track).map((item, artistIndex) => (
                       <span key={`${item.id || item.name}-${artistIndex}`}>
                         {artistIndex > 0 ? <span aria-hidden="true"> / </span> : null}
-                        {item.id ? <button className="artist-page__artist-link" onClick={() => onOpenArtist(item)} type="button">{item.name}</button> : <span>{item.name}</span>}
+                        {item.id && item.id !== "0" ? <button className="artist-page__artist-link" onClick={() => onOpenArtist(item)} type="button">{item.name}</button> : <span>{item.name}</span>}
                       </span>
                     ))}</span></td>
                     <td>{track.albumId && onOpenAlbum ? <button className="catalog-table__artist" type="button" onClick={() => onOpenAlbum({ kind: "album", id: track.albumId!, title: track.album, publishDate: track.albumPublishDate ?? "", description: "", coverCacheKey: track.coverCacheKey })}>{track.album}</button> : track.album || "未知专辑"}</td>

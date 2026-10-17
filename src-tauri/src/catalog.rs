@@ -821,6 +821,20 @@ mod tests {
     }
 
     #[test]
+    fn song_credits_preserve_upstream_zero_id_and_full_display_names() {
+        let mut value = song();
+        value["artists"] = json!([
+            {"id":"0","name":"未建主页的署名"},
+            {"id":"artist-1","name":"林间电台"}
+        ]);
+        let page = service(json!({"items":[value],"page":1,"hasMore":false}))
+            .recommend_songs(RecommendationKind::Radar, 1, 1)
+            .expect("song with an unindexed credit");
+        assert_eq!(page.items[0].artists[0].id, "0");
+        assert_eq!(page.items[0].artist, "未建主页的署名 / 林间电台");
+    }
+
+    #[test]
     fn request_validation_rejects_bad_keyword_paging_and_area_before_provider_use() {
         let provider = Arc::new(FakeProvider {
             reply: Mutex::new(Some(Err(ProviderError::Unavailable))),

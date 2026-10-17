@@ -114,7 +114,7 @@ function CollectionPage({ entity, onBack, onOpen, onPlayback, active }: {
       {!page.items.length && <p>暂时没有歌曲</p>}
       <ol className="catalog-detail-songs" start={(pageNumber - 1) * 20 + 1}>{page.items.map(song => <li key={song.id}>
         <div><strong>{song.title}</strong><small>{song.artists.map((artist, i) => <span key={`${artist.id}:${i}`}>
-          {i > 0 && " / "}<button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>
+          {i > 0 && " / "}{artist.id === "0" ? artist.name : <button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>}
         </span>)} · {song.albumId ? <button type="button" onClick={() => { const album = albumFromSong(song); if (album) onOpen(album); }}>{song.album}</button> : song.album}</small></div>
         <span className="catalog-detail-song-actions"><button className="play-next-button" type="button" title="下一首播放" aria-label={`下一首播放 ${song.title}`} disabled={busy} onClick={() => void act(song, "next")}><Icon name="play-next" size={20} /></button>
           <button type="button" disabled={busy} aria-label={`播放 ${song.title}`} onClick={() => void act(song, "play")}>播放</button><button type="button" disabled={busy} aria-label={`加入队列 ${song.title}`} onClick={() => void act(song, "enqueue")}>＋</button></span>

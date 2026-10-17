@@ -49,7 +49,8 @@ it("places titles on the physical top surface and views the stacks from above",(
   try {
     rack.update(0,1280,900,camera);
     const labels:THREE.Mesh[]=[];rack.root.traverse(o=>{if(o instanceof THREE.Mesh&&o.name==="discovery-title-on-top")labels.push(o);});
-    expect(labels).toHaveLength(6);
+    expect(rack.count).toBe(9);expect(labels).toHaveLength(9);
+    expect(labels.filter(label=>(label.material as THREE.MeshBasicMaterial).opacity>0)).toHaveLength(6);
     expect(Math.asin(camera.position.y/camera.position.length())).toBeGreaterThan(Math.PI/3);
     expect(camera.position.x).toBe(0);
     for(const label of labels) {

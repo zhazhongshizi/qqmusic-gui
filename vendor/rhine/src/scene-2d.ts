@@ -1,7 +1,7 @@
 import { ArchiveDrag, ArchivePlaneMomentum, type DragPosition } from "./archive-drag";
 import * as THREE from "three";
-import { DiscoveryRack } from "./discovery-rack";
-import type { DiscoveryState, DiscoveryFrame } from "./discovery-layout";
+import { DiscoveryRack, discoveryCluster, discoveryClusterDistance } from "./discovery-rack";
+import { DISCOVERY_SINK_DEPTH, discoverySinkScale, discoveryRetreat, type DiscoveryState, type DiscoveryFrame } from "./discovery-layout";
 import { COLUMN_SPACING, ROW_SPACING, selectionCell, wrap, type ArchiveCell, type ArchiveNavigation } from "./archive-loop";
 import { baselineSelectionWave, columnStrength, idleWave, settlingWave, INSPECTION_LIFT, damp, smooth, returnStep } from "./motion";
 import { fullMotion, type MotionPreferences } from "./motion-preferences";
@@ -18,7 +18,7 @@ import type { RenderQuality } from "./render-quality";
 type Point = { x: number; y: number };
 type Card = {
   cell: ArchiveCell; index: number; depth: number; front: Point[]; top: Point[]; side: Point[];
-  fog: number; selected: boolean; position: Vector; frontFacing: boolean;
+  fog: number; selected: boolean; position: Vector; rotation: number; scale:number; frontFacing: boolean;
   project: (x: number,y: number,z: number)=>Point; frontFog: number[];
   texture?: HTMLCanvasElement;
 };
@@ -41,6 +41,9 @@ export class ArchiveScene2D {
   private discovery?: DiscoveryRack;
   private discoveryCamera=new THREE.PerspectiveCamera();
   private discoverySources: string[]=[];
+  private discoveryCells: ArchiveCell[]=[];
+  private discoveryAnchor={x:0,z:0};
+  private discoveryRadius=1;
   onDiscoveryFrame?: (frame: DiscoveryFrame) => void;
   setDiscovery(state: DiscoveryState | null) {
     if(!state) {this.discovery?.dispose();this.discovery=undefined;this.invalidate();return;}
@@ -53,9 +56,14 @@ export class ArchiveScene2D {
       this.discoveryCamera.fov=THREE.MathUtils.radToDeg(camera.fov);this.discoveryCamera.aspect=this.width/this.height;
       this.discoveryCamera.updateProjectionMatrix();this.discoveryCamera.updateMatrixWorld();
       if(!this.drawnCards.length)this.paint();
-      const sources=[...this.drawnCards].sort((a,b)=>Math.hypot(a.front[0].x-this.width/2,a.front[0].y-this.height/2)-Math.hypot(b.front[0].x-this.width/2,b.front[0].y-this.height/2));
-      this.discoverySources=sources.map(c=>`${c.cell.lane}:${c.cell.row}`);
-      this.discovery=new DiscoveryRack();this.discovery.begin(this.discoveryCamera,sources.map(c=>({position:new THREE.Vector3(c.position.x,c.position.y,c.position.z)})));
+      this.discoveryCells=this.drawnCards.map(c=>({...c.cell}));
+      const cluster=discoveryCluster(this.drawnCards.map(card=>({
+        card,position:new THREE.Vector3(card.position.x,card.position.y,card.position.z),rotation:new THREE.Euler(0,card.rotation,0),scale:new THREE.Vector3(1,1,1),
+        flattenedRotation:card.selected||this.outgoing.some(o=>o.cell.lane===card.cell.lane&&o.cell.row===card.cell.row)?new THREE.Euler():undefined,
+      })),this.discoveryCamera);
+      this.discoverySources=cluster.sources.map(c=>`${c.card.cell.lane}:${c.card.cell.row}`);
+      this.discoveryAnchor={x:cluster.anchor.x,z:cluster.anchor.z};this.discoveryRadius=cluster.radius;
+      this.discovery=new DiscoveryRack();this.discovery.begin(this.discoveryCamera,cluster.sources);
       this.discovery.onFrame=frame=>{this.container.dataset.discovery=frame.phase;this.onDiscoveryFrame?.(frame);};
     }
     this.discovery.set({...state,reduced:state.reduced||!this.motion.surfaceTransitions});this.invalidate();
@@ -277,6 +285,13 @@ export class ArchiveScene2D {
     if(this.discovery) {const c=this.discoveryCamera,eye=c.position,aim=eye.clone().addScaledVector(c.getWorldDirection(new THREE.Vector3()),140);return perspectiveFrame({eye,aim,fov:THREE.MathUtils.degToRad(c.fov)},this.width,this.height,this.detail);}
     return perspectiveFrame(this.camera??this.cameraTarget(),this.width,this.height,this.detail);
   }
+  private discoverySink(cell:ArchiveCell) {
+    if(!this.discovery)return 0;
+    const index=this.discoverySources.indexOf(`${cell.lane}:${cell.row}`);
+    if(index>=0&&index<this.discovery.count)return 0;
+    const x=(cell.lane-this.focus.lane)*COLUMN_SPACING-this.discoveryAnchor.x,z=(cell.row-this.focus.row)*ROW_SPACING-2.17-this.discoveryAnchor.z;
+    return discoveryRetreat(this.discovery.motion.retreat,discoveryClusterDistance(x,z)/this.discoveryRadius);
+  }
   private heightAt(cell: ArchiveCell) {
     const cached=this.fieldCache.get(cell.lane)?.get(cell.row);if(cached!==undefined)return cached;
     const row = cell.row - this.selectedCell.row;
@@ -289,7 +304,9 @@ export class ArchiveScene2D {
     for (const pulse of this.pulses)
       height += baselineSelectionWave(Math.hypot(cell.row - pulse.cell.row, (cell.lane - pulse.cell.lane) * 2.2), this.clock - pulse.time);
     if (this.hover?.lane === cell.lane && this.hover.row === cell.row) height += .28;
-    if(this.discovery)height=lerp(height,-4.6,this.discovery.motion.flatten)-this.discovery.motion.spread*35;
+    if(this.discovery) {
+      height=lerp(height,-4.6,this.discovery.motion.flatten)-this.discoverySink(cell)*DISCOVERY_SINK_DEPTH;
+    }
     let lane=this.fieldCache.get(cell.lane);if(!lane)this.fieldCache.set(cell.lane,lane=new Map());lane.set(cell.row,height);
     return height;
   }
@@ -297,13 +314,14 @@ export class ArchiveScene2D {
     const selected=cell.lane===this.selectedCell.lane&&cell.row===this.selectedCell.row;
     const outgoing=selected?undefined:this.outgoing.find(o=>o.cell.lane===cell.lane&&o.cell.row===cell.row);
     const position={x:(cell.lane-this.focus.lane)*COLUMN_SPACING,y:this.heightAt(cell)+(selected?this.lift:outgoing?.lift.value??0)*(1-(this.discovery?.motion.flatten??0)),z:(cell.row-this.focus.row)*ROW_SPACING-2.17};
-    const angle=selected?this.rotation:outgoing?.rotation??0,cos=Math.cos(angle),sin=Math.sin(angle);
-    const world=(a:number,b:number,c:number)=>({x:position.x+a*cos+c*sin,y:position.y+b,z:position.z-a*sin+c*cos});
+    const angle=(selected?this.rotation:outgoing?.rotation??0)*(1-(this.discovery?.motion.flatten??0)),cos=Math.cos(angle),sin=Math.sin(angle);
+    const scale=discoverySinkScale(this.discoverySink(cell));
+    const world=(a:number,b:number,c:number)=>({x:position.x+(a*cos+c*sin)*scale,y:position.y+b*scale,z:position.z+(-a*sin+c*cos)*scale});
     const project=(a:number,b:number,c:number)=>{const p=world(a,b,c);return frame.project(p.x,p.y,p.z)};
     const side=frame.direction.x*cos-frame.direction.z*sin<0?-SHELL.halfWidth:SHELL.halfWidth;
     const frontFacing=frame.direction.x*sin+frame.direction.z*cos>0,z=frontFacing?SHELL.front:SHELL.back;
     const corners=[world(-2.5,3.7,z),world(2.5,3.7,z),world(2.5,0,z),world(-2.5,0,z)];
-    return {cell,index:wrap(cell.row-12,this.count),selected,position,project,frontFacing,texture:outgoing?.texture,
+    return {cell,index:wrap(cell.row-12,this.count),selected,position,rotation:angle,scale,project,frontFacing,texture:outgoing?.texture,
       depth:frame.depth(world(0,1.85,0)),fog:frame.fog(world(0,1.85,0)),frontFog:corners.map(frame.fog),
       front:corners.map(p=>frame.project(p.x,p.y,p.z)),
       top:[project(-2.5,3.7,SHELL.back),project(2.5,3.7,SHELL.back),project(2.5,3.7,SHELL.front),project(-2.5,3.7,SHELL.front)],
@@ -331,12 +349,14 @@ export class ArchiveScene2D {
     const c=this.context;c.globalAlpha=1;c.fillStyle='#eae5e1';c.fillRect(0,0,this.width,this.height);
     const frame=this.frame(),cards:Card[]=[];
     let minLane=Infinity,maxLane=-Infinity,minRow=Infinity,maxRow=-Infinity;
-    for(const y of [-5.2,1.8])for(const x of [-90,this.width+90])for(const sy of [-90,this.height+90]) {
+    if(!this.discovery)for(const y of [-5.2,1.8])for(const x of [-90,this.width+90])for(const sy of [-90,this.height+90]) {
       const p=frame.ground(x,sy,y);if(!p)continue;
       const lane=p.x/COLUMN_SPACING+this.focus.lane,row=(p.z+2.17)/ROW_SPACING+this.focus.row;
       minLane=Math.min(minLane,lane);maxLane=Math.max(maxLane,lane);minRow=Math.min(minRow,row);maxRow=Math.max(maxRow,row);
     }
-    for(let lane=Math.floor(minLane)-1;lane<=Math.ceil(maxLane)+1;lane++)for(let row=Math.floor(minRow)-2;row<=Math.ceil(maxRow)+2;row++) {
+    const cells=this.discovery?this.discoveryCells:[];
+    if(!this.discovery)for(let lane=Math.floor(minLane)-1;lane<=Math.ceil(maxLane)+1;lane++)for(let row=Math.floor(minRow)-2;row<=Math.ceil(maxRow)+2;row++)cells.push({lane,row});
+    for(const {lane,row} of cells) {
       const cell={lane,row},selected=lane===this.selectedCell.lane&&row===this.selectedCell.row;
       const outgoing=this.outgoing.find(o=>o.cell.lane===lane&&o.cell.row===row);
       const x=(lane-this.focus.lane)*COLUMN_SPACING,z=(row-this.focus.row)*ROW_SPACING-2.17,y=this.heightAt(cell)+1.85+(selected?this.lift:outgoing?.lift.value??0);
@@ -351,14 +371,15 @@ export class ArchiveScene2D {
     for(const o of this.outgoing)if(!cards.some(c=>c.cell.lane===o.cell.lane&&c.cell.row===o.cell.row))cards.push(this.card(o.cell,frame));
     cards.sort((a,b)=>b.depth-a.depth);this.drawnCards=cards;
     const selected=cards.find(card=>card.selected)!;
-    if(this.lift>.1) {
+    if(this.lift*(1-(this.discovery?.motion.flatten??0))>.1) {
       const {x,z}=selected.position,height=Math.max(.1,selected.position.y+4.6+1.85),spread=.35+height*.14;
       const project=(u:number,v:number)=>frame.project(x+height*6/14+(u-.5)*(5+spread),-4.6,z+height*5/14+(v-.5)*(.5+spread));
       c.globalAlpha=.65/(1+height*.2);
       drawTextureQuad(c,this.shadowTexture,[project(0,0),project(1,0),project(1,1),project(0,1)],project);c.globalAlpha=1;
     }
     for(const card of cards) {
-      if(this.discovery&&this.discovery.motion.spread>0&&this.discoverySources.slice(0,this.discovery.state?.entries.length??0).includes(`${card.cell.lane}:${card.cell.row}`))continue;
+      if(card.scale===0)continue;
+      if(this.discovery&&this.discovery.motion.handoff&&this.discoverySources.slice(0,this.discovery.count).includes(`${card.cell.lane}:${card.cell.row}`))continue;
       const project=card.project;
       this.polygon(card.front,'#dfd7c9');
       if(card.selected||card.texture) {
@@ -395,7 +416,7 @@ export class ArchiveScene2D {
     if(this.discovery) {
       this.last=time;this.fieldCache.clear();
       const moving=this.discovery.update(dt,this.width,this.height,this.discoveryCamera);
-      if(this.discovery.motion.spread<1)this.paint();
+      if(this.discovery.motion.retreat<1)this.paint();
       else {this.context.fillStyle="#eae5e1";this.context.fillRect(0,0,this.width,this.height);}
       this.discovery.paint(this.context,this.discoveryCamera,this.width,this.height);return moving;
     }

@@ -257,6 +257,47 @@ def test_song_with_nine_artists_is_valid() -> None:
     assert reply.warnings == []
 
 
+@pytest.mark.parametrize("operation", ["search.songs", "recommend.guess", "recommend.radar"])
+@pytest.mark.parametrize("with_profile", [True, False])
+def test_named_song_credits_without_profiles_do_not_discard_the_song(
+    operation: str, with_profile: bool,
+) -> None:
+    song = _song()
+    credits = [{"id": 0, "mid": "", "name": "未建主页的署名"}]
+    if with_profile:
+        credits.append({"id": 201, "mid": "artist-mid-1", "name": "林间电台"})
+    song["singer"] = credits
+    if operation == "search.songs":
+        params, raw = {"keyword": "纸月光"}, {"body": {"item_song": [song]}}
+    elif operation == "recommend.guess":
+        params, raw = {}, {"tracks": [song]}
+    else:
+        params, raw = {"page": 1}, {"VecSongs": [{"Track": song}]}
+    reply, _ = _execute(operation, params, raw)
+    items = cast("list[dict[str, object]]", reply.result["items"])
+    assert items[0]["id"] == "song-mid-1"
+    assert items[0]["artists"] == [
+        {"id": "0", "name": "未建主页的署名"},
+        *([{"id": "artist-mid-1", "name": "林间电台"}] if with_profile else []),
+    ]
+    assert reply.warnings == []
+
+
+@pytest.mark.parametrize("credit", [
+    {"id": 0, "mid": "", "name": ""},
+    {"id": 0, "mid": "bad/mid", "name": "署名"},
+    {"id": 0, "mid": "", "singerId": -1, "name": "署名"},
+    {"id": False, "mid": "", "name": "署名"},
+    {"mid": "", "name": "署名"},
+])
+def test_unindexed_credit_support_does_not_accept_malformed_artists(credit: object) -> None:
+    song = _song()
+    song["singer"] = [credit]
+    reply, _ = _execute("recommend.guess", {}, {"tracks": [song]})
+    assert reply.result["items"] == []
+    assert reply.warnings == [{"code": "item_invalid", "entity": "song", "index": 0}]
+
+
 @pytest.mark.parametrize("artist_count", [0, 33])
 def test_song_with_invalid_artist_count_is_skipped_with_item_warning(artist_count: int) -> None:
     reply, _ = _execute(

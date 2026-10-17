@@ -158,14 +158,14 @@ function ArtistLinks({ artists, onOpenArtist }: ArtistLinksProps) {
       {artists.map((artist, index) => (
         <span key={`${artist.id}-${index}`}>
           {index > 0 ? <span aria-hidden="true"> / </span> : null}
-          <button
+          {artist.id === "0" ? artist.name : <button
             aria-label={`查看歌手 ${artist.name}`}
             className="catalog-table__artist"
             onClick={() => onOpenArtist(artist)}
             type="button"
           >
             {artist.name}
-          </button>
+          </button>}
         </span>
       ))}
     </span>

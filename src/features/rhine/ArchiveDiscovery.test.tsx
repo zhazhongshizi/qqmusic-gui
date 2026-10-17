@@ -23,6 +23,28 @@ afterEach(cleanup);
 const button=(name:string)=>screen.getByRole("button",{name});
 const dossier=()=>within(screen.getByRole("dialog",{name:"选中磁带档案"}));
 
+it("shows at most nine real tapes per page and keeps all twenty playlists reachable",async()=>{
+ const playlists=Array.from({length:20},(_,i)=>({kind:"playlist",id:String(i+1),title:`歌单 ${i+1}`,songCount:1,listenCount:0,description:""}));
+ mocks.lists.mockImplementation((generation:number)=>Promise.resolve({generation,page:1,hasMore:false,warningCount:0,items:playlists}));
+ const scene=vi.fn();render(<ArchiveDiscovery {...props} onSceneChange={scene}/>);fireEvent.click(button("推荐歌单"));
+ await screen.findByRole("button",{name:"选择歌单 歌单 1"});expect(screen.getAllByRole("button",{name:/^选择歌单 /})).toHaveLength(9);
+ await waitFor(()=>expect(scene.mock.lastCall?.[0].entries).toHaveLength(9));fireEvent.click(button("下一页"));
+ await screen.findByRole("button",{name:"选择歌单 歌单 10"});expect(screen.getAllByRole("button",{name:/^选择歌单 /})).toHaveLength(9);fireEvent.click(button("下一页"));
+ await screen.findByRole("button",{name:"选择歌单 歌单 19"});expect(screen.getAllByRole("button",{name:/^选择歌单 /})).toHaveLength(2);
+ expect(button("下一页")).toBeDisabled();expect(mocks.lists).toHaveBeenCalledOnce();fireEvent.click(button("上一页"));
+ await screen.findByRole("button",{name:"选择歌单 歌单 10"});expect(mocks.lists).toHaveBeenCalledOnce();
+});
+
+it("preserves unindexed song credits as text while valid artists still open",async()=>{
+ const credited={...songs[0]!,artists:[{id:"0",name:"未建主页的署名"},songs[0]!.artists[0]!],artist:"未建主页的署名 / 歌手 1"};
+ mocks.songs.mockImplementation((_kind:string,generation:number)=>Promise.resolve({generation,page:1,hasMore:false,warningCount:0,items:[credited]}));
+ render(<ArchiveDiscovery {...props}/>);fireEvent.click(await screen.findByRole("button",{name:"选择歌曲 曲目 1"}));
+ expect(dossier().getByText(/未建主页的署名/)).toBeInTheDocument();
+ expect(dossier().queryByRole("button",{name:"未建主页的署名"})).not.toBeInTheDocument();
+ fireEvent.click(dossier().getByRole("button",{name:"歌手 1"}));
+ expect(screen.getByRole("heading",{name:"歌手 1"})).toBeInTheDocument();
+});
+
 it("hovers without selecting or playing, extracts on click and exposes explicit actions",async()=>{
  const scene=vi.fn();render(<ArchiveDiscovery {...props} onSceneChange={scene}/>);
  const tape=await screen.findByRole("button",{name:"选择歌曲 曲目 2"});

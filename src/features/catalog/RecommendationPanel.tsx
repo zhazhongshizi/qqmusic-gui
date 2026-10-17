@@ -42,7 +42,7 @@ export function RecommendationPanel({ kind, accountKey, active = true, onOpen }:
         })}</ul> : <ol className="catalog-detail-songs recommendation-songs">{(page as CatalogSongPage).items.map(song =>
           <li key={song.id}><AlbumArtwork compact track={{ ...song, accent: "#789575", artworkVariant: "fern" }} />
             <div><strong>{song.title}</strong><small>{song.artists.map((artist, index) =>
-              <span key={`${artist.id}:${index}`}>{index > 0 && " / "}<button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button></span>)}
+              <span key={`${artist.id}:${index}`}>{index > 0 && " / "}{artist.id === "0" ? artist.name : <button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>}</span>)}
               {" · "}<AlbumLink track={song} onOpen={onOpen} /></small></div>
             <span className="catalog-detail-song-actions"><button type="button" className="play-next-button"
               disabled={busy} aria-label={`下一首播放 ${song.title}`} title="下一首播放" onClick={() => void act(song, "next")}><Icon name="play-next" size={20} /></button>

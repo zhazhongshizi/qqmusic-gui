@@ -1,19 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getRecommendedPlaylists, getRecommendedSongs, type RecommendationKind } from "../../backend/catalogDiscoveryAdapter";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import type { CatalogEntityPage } from "../../contracts/catalogBrowse";
 import { enqueueAndPlayCatalogTrack, enqueueCatalogTrack, enqueueNextCatalogTrack } from "../player/catalogQueue";
+import { recommendationPages } from "./recommendationPages";
 
 export type RecommendationAction = "play" | "next" | "enqueue";
 
 /** Shared requests and queue semantics; presentation belongs to each mode. */
-export function useRecommendations({ kind, accountKey, active = true }: {
-  kind: RecommendationKind; accountKey: string; active?: boolean;
+export function useRecommendations({ kind, accountKey, active = true, pageSize }: {
+  kind: RecommendationKind; accountKey: string; active?: boolean; pageSize?: number;
 }) {
-  const context = `${accountKey}:${kind}`;
+  const context = `${accountKey}:${kind}:${pageSize ?? "upstream"}`;
   const [pagination, setPagination] = useState({ context, number: 1 });
   const pageNumber = pagination.context === context ? pagination.number : 1;
   const [retry, setRetry] = useState(0);
+  const paged = useMemo(() => pageSize ? recommendationPages(async (generation, page) => {
+    const result = kind === "playlists" ? await getRecommendedPlaylists(generation, page) : await getRecommendedSongs(kind, generation, page);
+    return kind === "guess" ? { ...result, hasMore: false } : result;
+  }, pageSize) : null, [kind, accountKey, retry, pageSize]);
   const key = `${context}:${pageNumber}:${retry}`;
   const [state, setState] = useState<{ key: string; page?: CatalogSongPage | CatalogEntityPage; error?: boolean }>({ key: "" });
   const [busy, setBusy] = useState(false);
@@ -29,12 +34,12 @@ export function useRecommendations({ kind, accountKey, active = true }: {
     // A hidden shelf remains mounted so details/back preserve its loaded page.
     if (!active || current.current.state.key === key) return;
     let alive = true;
-    const request = kind === "playlists" ? getRecommendedPlaylists(epoch, pageNumber) : getRecommendedSongs(kind, epoch, pageNumber);
+    const request = paged ? paged(pageNumber, epoch) : kind === "playlists" ? getRecommendedPlaylists(epoch, pageNumber) : getRecommendedSongs(kind, epoch, pageNumber);
     void request.then(page => {
       if (alive && epoch === generation.current && page.generation === epoch) setState({ key, page });
     }).catch(() => { if (alive && epoch === generation.current) setState({ key, error: true }); });
     return () => { alive = false; generation.current++; };
-  }, [key, kind, pageNumber, active]);
+  }, [key, kind, pageNumber, active, paged]);
   async function act(song: CatalogSong, action: RecommendationAction) {
     if (pending.current || !current.current.active) return false;
     pending.current = true; setBusy(true); setMessage({ key, text: "" });

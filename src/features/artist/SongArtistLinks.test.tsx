@@ -102,3 +102,19 @@ it.each(["local_test", "fixture-test"])("keeps %s as text without an online arti
   expect(screen.getByText(track.artist)).toBeInTheDocument();
   expect(mocks.artists).not.toHaveBeenCalled();
 });
+
+it.each([true, false])("keeps unindexed credits as text without opening another artist (known: %s)", async known => {
+  const credits = [{ id: "0", name: "未建主页的署名" }, artists[1]!];
+  const open = vi.fn();
+  mocks.artists.mockResolvedValue(credits);
+  render(<SongArtistLinks track={{ ...track, artist: "未建主页的署名 / 歌手乙", ...(known ? { artists: credits } : {}) }} onOpenArtist={open} />);
+  const user = userEvent.setup();
+  if (!known) await user.click(screen.getByRole("button", { name: "查看歌手 未建主页的署名" }));
+  expect(await screen.findByText("未建主页的署名")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "查看歌手 未建主页的署名" })).not.toBeInTheDocument();
+  expect(open).not.toHaveBeenCalled();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看歌手 歌手乙" }));
+  expect(open).toHaveBeenCalledExactlyOnceWith(artists[1]);
+  expect(mocks.artists).toHaveBeenCalledTimes(known ? 0 : 1);
+});

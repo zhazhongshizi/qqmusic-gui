@@ -72,7 +72,7 @@ export function RecommendationShelf({ kind, accountKey, active, hidden, onOpen }
       <h2>{title(selected)}</h2>
       {selected.kind === "song" ? <>
         <dl><div><dt>歌手</dt><dd>{selected.song.artists.length ? selected.song.artists.map((artist, index) => <Fragment key={`${artist.id}:${index}`}>
-          {index > 0 && " / "}<button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>
+          {index > 0 && " / "}{artist.id === "0" ? artist.name : <button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>}
         </Fragment>) : selected.song.artist}</dd></div>
           <div><dt>专辑</dt><dd><AlbumLink track={selected.song} onOpen={onOpen} /></dd></div>
           <div><dt>时长</dt><dd>{selected.song.durationMs > 0 ? time(selected.song.durationMs) : "时长未知"}</dd></div></dl>

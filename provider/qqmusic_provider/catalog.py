@@ -425,6 +425,21 @@ def _album_cache_key(value: Mapping[str, object]) -> str | None:
     return None
 
 
+def _song_artist(value: object) -> dict[str, object]:
+    item = _mapping(value)
+    # QQ can credit a named contributor without an artist profile. Preserve its
+    # upstream zero ID as a text-only credit instead of dropping the whole song.
+    # This exception applies only to song credits, never artist search/details.
+    if type(item.get("id")) is int and item["id"] == 0 and all(
+        item.get(key) in (None, "")
+        for key in (
+            "mid", "singerMid", "singerMID", "singer_mid", "SingerMid", "singerId", "SingerID"
+        )
+    ):
+        return {"id": "0", "name": _text(item, "name", "singerName", "Name", "title")}
+    return _artist(item, include_cover=False)
+
+
 def _song(value: object) -> dict[str, object]:
     item = _mapping(value)
     singers = item.get("singer", item.get("artists"))
@@ -434,7 +449,7 @@ def _song(value: object) -> dict[str, object]:
         or len(singers) > _MAX_ARTISTS_PER_SONG
     ):
         raise ValueError
-    artists = [_artist(singer, include_cover=False) for singer in singers]
+    artists = [_song_artist(singer) for singer in singers]
     album_value = _mapping(item.get("album"))
     album = _album(album_value, include_cover=False)
     cover_cache_key = _album_cache_key(album_value)
