@@ -9,14 +9,19 @@ export type DiscoveryState = {
   open: boolean; ready: boolean; key: string; entries: readonly DiscoveryEntry[];
   selected: string | null; hovered: string | null; scroll: number; top: number;
   instant?: boolean; shortEntry?: boolean; reduced?: boolean;
+  /** Reuse flatten/retreat without forming the recommendation grid. */
+  surfaceOnly?: boolean;
 };
 export type DiscoveryRect = { id: string; x: number; y: number; width: number; height: number };
 export type DiscoveryFrame = { phase: "flattening" | "waiting" | "moving" | "ready" | "closed"; progress: number; rects: DiscoveryRect[]; contentHeight: number };
 export const discoveryEase = (n: number) => { const t = Math.max(0, Math.min(1, n)); return t * t * (3 - 2 * t); };
 export const smootherstep = (n: number) => { const t = Math.max(0, Math.min(1, n)); return t * t * t * (t * (t * 6 - 15) + 10); };
 export const DISCOVERY_DURATION = 1.5;
+export const ARCHIVE_PAGE_DURATION = .88;
 export const DISCOVERY_WAIT = .30;
-/** Spatial delays are shared by both renderers and stay still at the data-wait anchor. */
+export const DISCOVERY_SWAP_OUT = .12;
+export const DISCOVERY_SWAP_IN = .18;
+/** Spatial delays are shared by both renderers; flattening precedes the retreat. */
 export function discoveryRetreat(progress: number, normDistance: number) {
   const distance = Math.max(0, Math.min(1, normDistance));
   // The first local sink starts only when flattening has finished. Later
@@ -35,20 +40,31 @@ export class DiscoveryMotion {
   private swapTarget = 1;
   private pendingKey: string | null = null;
   key = "";
+  reset() { this.time = 0; this.swap = this.swapTarget = 1; this.pendingKey = null; this.key = ""; }
   step(dt: number, state: DiscoveryState) {
     const immediate = state.reduced || state.instant;
     const previousTime = this.time;
     if (state.shortEntry && state.open && this.time === 0) this.time = DISCOVERY_WAIT;
-    const target = state.open ? state.ready || this.time > DISCOVERY_WAIT ? DISCOVERY_DURATION : DISCOVERY_WAIT : 0;
+    // The physical shelf forms while recommendations load. Data readiness only
+    // gates its print and interactions, never the entry camera/tape movement.
+    const target = state.open ? (state.surfaceOnly ? ARCHIVE_PAGE_DURATION : DISCOVERY_DURATION) : 0;
     this.time = immediate ? target : advance(this.time, target, Math.min(dt, .05) * (state.shortEntry && state.open ? 3 : 1));
     if (state.ready && state.key !== this.key) {
-      if (previousTime <= DISCOVERY_WAIT || immediate) { this.key = state.key; this.pendingKey = null; this.swap = 1; this.swapTarget = 1; }
-      else { this.pendingKey = state.key; this.swapTarget = 0; }
+      if (previousTime <= DISCOVERY_WAIT || immediate || this.key === "") {
+        this.key = state.key; this.pendingKey = null;
+        // A late first response fills the already moving blank tapes directly,
+        // then fades in; it has no outgoing content to fade out first.
+        this.swap = previousTime <= DISCOVERY_WAIT || immediate ? 1 : 0; this.swapTarget = 1;
+      } else { this.pendingKey = state.key; this.swapTarget = 0; }
     }
-    if (state.ready && state.key === this.key && this.pendingKey !== null) { this.pendingKey = null; this.swapTarget = 1; }
-    this.swap = immediate ? this.swapTarget : advance(this.swap, this.swapTarget, Math.min(dt, .05) / .18);
+    // Keep the last complete content while loading; a rapid tab change must
+    // cancel the previous pending commit rather than install another tab's data.
+    if (!state.ready || state.key === this.key) { this.pendingKey = null; this.swapTarget = 1; }
+    const swapDuration = this.swapTarget === 0 ? DISCOVERY_SWAP_OUT : DISCOVERY_SWAP_IN;
+    this.swap = immediate ? this.swapTarget : advance(this.swap, this.swapTarget, Math.min(dt, .05) / swapDuration);
     if (this.swap === 0 && this.pendingKey !== null) { this.key = this.pendingKey; this.pendingKey = null; this.swapTarget = 1; }
   }
+  get contentOpacity() { return smootherstep(this.swap); }
   get flatten() { return smootherstep(this.time / DISCOVERY_WAIT); }
   get retreat() { return Math.max(0, Math.min(1, (this.time - .24) / .64)); }
   get spread() { return smootherstep((this.time - .42) / .86); }
@@ -62,8 +78,9 @@ export class DiscoveryMotion {
   }
   phase(state: DiscoveryState): DiscoveryFrame["phase"] {
     if (!state.open) return this.time === 0 ? "closed" : this.time < DISCOVERY_WAIT ? "flattening" : "moving";
+    if (state.surfaceOnly) return this.time === ARCHIVE_PAGE_DURATION ? "ready" : this.time < DISCOVERY_WAIT ? "flattening" : "moving";
     if (this.time < DISCOVERY_WAIT) return "flattening";
-    if (!state.ready && (this.time === DISCOVERY_WAIT || this.time === DISCOVERY_DURATION)) return "waiting";
+    if (!state.ready && this.swap === 1 && this.time === DISCOVERY_DURATION) return "waiting";
     return this.time === DISCOVERY_DURATION && this.swap === 1 && this.key === state.key && this.pendingKey === null ? "ready" : "moving";
   }
 }

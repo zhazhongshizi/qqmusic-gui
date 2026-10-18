@@ -433,3 +433,16 @@
 .rhine-deck-quality, .rhine-deck-foot button, .rhine-deck-quality-menu button, .rhine-volume-reading { font-size: var(--rh-size-body); color: var(--rh-ink-2); }
 .rhine-deck-quality-menu button { min-height: 36px; }
 .rhine-document { bottom: 64px; }
+
+/* The scene uses DiscoveryMotion; page furniture follows its flatten/return phases. */
+.rhine-workspace[data-page-transition="leaving"] :is(.rhine-browse-content, .rhine-catalog, .rhine-history-heading, .rhine-history-selection, .rhine-history-document, .rhine-now, .rhine-index) {
+  opacity: 0; transition: opacity 280ms ease;
+}
+.rhine-workspace[data-page-transition="entering"] :is(.rhine-browse-content, .rhine-catalog, .rhine-history-heading, .rhine-history-selection, .rhine-history-document, .rhine-now, .rhine-index) {
+  animation: rhine-page-furniture 880ms ease both;
+}
+.rhine-page-entry-clock { position: absolute; pointer-events: none; animation: rhine-page-furniture 1500ms linear; }
+@keyframes rhine-page-furniture { 0%, 35% { opacity: 0; } 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .rhine-workspace[data-page-transition] :is(.rhine-browse-content, .rhine-catalog, .rhine-history-heading, .rhine-history-selection, .rhine-history-document, .rhine-now, .rhine-index), .rhine-page-entry-clock { animation-duration: 1ms; transition-duration: 1ms; }
+}

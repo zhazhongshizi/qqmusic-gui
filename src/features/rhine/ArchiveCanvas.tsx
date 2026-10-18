@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ArchivePageTransitionContext } from "./ArchivePageTransition";
 import { ArchiveScene } from "./vendor/scene";
 import { ArchiveScene2D } from "./vendor/scene-2d";
 import type { ArchiveRenderer, RhineFrameLimit } from "./rhineSettings";
@@ -19,6 +20,19 @@ export function ArchiveCanvas({ discovery = null, onDiscoveryFrame, renderer = "
   count: number; titles?: readonly string[]; quality?: RenderQuality; superPerformance?: boolean; disableCassetteMotionWhilePlaying?: boolean; reduceCassetteMotionWhilePlaying?: boolean; selected: number; detail: boolean; deck?: boolean; queueOpen?: boolean; playing?: boolean; track?: { id: string; title: string; artist: string; coverCacheKey?: string } | null; trackIndex?: number; queueLength?: number; active: boolean; onSelect: (index: number) => void; onOpen?: (index: number) => void; onPlaybackCassetteOpen?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const pageTransition = useContext(ArchivePageTransitionContext);
+  const transitionDiscovery = useMemo<DiscoveryState | null>(() => pageTransition && active ? {
+    open: pageTransition.phase === "leaving", ready: true, surfaceOnly: true,
+    key: "archive-page", entries: [], selected: null, hovered: null, scroll: 0, top: 0,
+    reduced: superPerformance || (playing && (disableCassetteMotionWhilePlaying || reduceCassetteMotionWhilePlaying)),
+  } : null, [pageTransition, active, superPerformance, playing, disableCassetteMotionWhilePlaying, reduceCassetteMotionWhilePlaying]);
+  const usingPageTransition = !discovery && !!transitionDiscovery;
+  discovery = discovery ?? transitionDiscovery;
+  if (usingPageTransition) onDiscoveryFrame = frame => {
+    if (frame.phase === "ready" && pageTransition?.phase === "leaving") pageTransition.onExited();
+    if (frame.phase === "closed" && pageTransition?.phase === "entering") pageTransition.onEntered();
+    // Page frames must not settle a pending discovery-to-playback navigation.
+  };
   const opening = useRef(booting);
   const scene = useRef<ArchiveScene | ArchiveScene2D | null>(null);
   const sceneSelection = useRef<number | null>(null);
@@ -180,13 +194,15 @@ export function ArchiveCanvas({ discovery = null, onDiscoveryFrame, renderer = "
       sceneSelection.current = selected;
     }
   }, [selected]);
-  useEffect(() => { scene.current?.setMode(queueOpen || (detail && !deck) ? "detail" : "archive"); }, [detail, deck, queueOpen]);
-  useEffect(() => { scene.current?.setDeck(deck, playing); }, [deck, playing]);
+  // Discovery captures the source camera/tapes. Keep its playback prints and
+  // cell intact until the shared transition releases the scene at either end.
+  useEffect(() => { if (!hasDiscovery) scene.current?.setMode(queueOpen || (detail && !deck) ? "detail" : "archive"); }, [detail, deck, queueOpen, hasDiscovery]);
+  useEffect(() => { if (!hasDiscovery) scene.current?.setDeck(deck, playing); }, [deck, playing, hasDiscovery]);
   useEffect(() => {
-    if (deck && track) scene.current?.setPlaybackTrack(track.id, trackIndex, queueLength);
-  }, [deck, track?.id, trackIndex, queueLength, ready]);
+    if (!hasDiscovery && deck && track) scene.current?.setPlaybackTrack(track.id, trackIndex, queueLength);
+  }, [deck, track?.id, trackIndex, queueLength, ready, hasDiscovery]);
   useEffect(() => {
-    if (!scene.current) return;
+    if (!scene.current || hasDiscovery) return;
     if (archiveTracks?.length) return;
     let alive = true;
     scene.current?.setTrack(deck ? track?.title ?? "" : "", deck ? track?.artist ?? "" : "", null);
@@ -200,7 +216,7 @@ export function ArchiveCanvas({ discovery = null, onDiscoveryFrame, renderer = "
       } finally { URL.revokeObjectURL(url); }
     }).catch(() => {});
     return () => { alive = false; };
-  }, [deck, track?.id, track?.title, track?.artist, track?.coverCacheKey, ready, Boolean(archiveTracks?.length)]);
+  }, [deck, track?.id, track?.title, track?.artist, track?.coverCacheKey, ready, Boolean(archiveTracks?.length), hasDiscovery]);
   useEffect(() => {
     const instance = scene.current;
     if (!instance || !archiveTracks) return;

@@ -7,7 +7,10 @@
 .discovery-rack-heading .discovery-header h1 { font-size: 25px; }
 .discovery-rack-pane { position: absolute; inset: 0; }
 .discovery-rack-pane .discovery-toolbar { position: absolute; top: calc(var(--rack-top) - 34px); left: 30px; right: 30px; z-index: 5; margin: 0; pointer-events: auto; font-size: 11px; }
-.discovery-rack-pane .discovery-toolbar > button { position: static; padding: 4px 0; }
+.discovery-toolbar-actions { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
+.discovery-rack-pane .discovery-toolbar-actions button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; white-space: nowrap; }
+.discovery-rack-pane .discovery-bulk-action { color: var(--rh-ink); }
+.discovery-bulk-notice { margin: 6px 20px; color: var(--rh-ink-2); font-size: 12px; }
 .discovery-rack-scroll { position: absolute; inset: var(--rack-top) 0 48px; overflow-x: hidden; overflow-y: auto; pointer-events: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .discovery-rack-space { position: relative; min-height: 100%; overflow: clip; }
 .rhine-discovery-rack .discovery-rack-hit { position: absolute; border: 0; padding: 0; border-radius: 8px; background: transparent; }
@@ -24,6 +27,7 @@
 .discovery-rack-footer { position: absolute; bottom: 0; left: 0; right: 0; min-height: 44px; z-index: 4; pointer-events: auto; background: #eae7e0ed; border-top: 1px solid var(--rh-edge); text-align: center; }
 .discovery-rack-footer .discovery-pages { border: 0; margin: 0; padding: 0; min-height: 44px; }
 .discovery-rack-footer > span { font-size: 11px; }
+.rhine-discovery-rack:not([data-phase="waiting"]) .discovery-rack-state[data-loading="true"] { display: none; }
 .discovery-rack-state { position: absolute; top: calc(var(--rack-top) + 45px); left: 30px; right: 30px; color: var(--rh-ink-3); text-align: center; pointer-events: auto; }
 .rhine-discovery-rack .discovery-details { position: absolute; top: 90px; bottom: 0; left: 0; right: 0; padding: 24px 40px; overflow: auto; background: #eae7e0; z-index: 5; pointer-events: auto; }
 .rhine-discovery-rack[inert] .discovery-rack-heading,

@@ -339,3 +339,17 @@ it("keeps an invalidation delivered during the last frame instead of losing the 
   await act(async()=>{});clock.flush(100);
   expect(clock.frames.size).toBe(1);clock.flush(200);expect(clock.frames.size).toBe(0);
 });
+
+it("holds playback cells and prints during discovery and applies the latest track when the transition releases",async()=>{
+ vi.stubGlobal("ResizeObserver",class{observe(){}disconnect(){}});mock.load.mockResolvedValueOnce(undefined);
+ const props={count:2,selected:0,detail:false,deck:true,playing:true,active:true,track:{id:"old",title:"原歌曲",artist:"歌手"},onSelect:()=>{}};
+ const view=render(<ArchiveCanvas {...props}/>);
+ await waitFor(()=>expect(mock.setTrack).toHaveBeenCalledWith("原歌曲","歌手",null));
+ const calls={deck:mock.setDeck.mock.calls.length,track:mock.setTrack.mock.calls.length,cell:mock.setPlaybackTrack.mock.calls.length};
+ const discovery={open:true,ready:true,key:"test",entries:[],selected:null,hovered:null,scroll:0,top:166};
+ view.rerender(<ArchiveCanvas {...props} deck={false} discovery={discovery}/>);
+ view.rerender(<ArchiveCanvas {...props} deck={false} track={{id:"new",title:"新歌曲",artist:"新歌手"}} discovery={{...discovery,open:false}}/>);
+ expect(mock.setDeck).toHaveBeenCalledTimes(calls.deck);expect(mock.setTrack).toHaveBeenCalledTimes(calls.track);expect(mock.setPlaybackTrack).toHaveBeenCalledTimes(calls.cell);
+ view.rerender(<ArchiveCanvas {...props} track={{id:"new",title:"新歌曲",artist:"新歌手"}} discovery={null}/>);
+ expect(mock.setDeck).toHaveBeenLastCalledWith(true,true);expect(mock.setPlaybackTrack).toHaveBeenLastCalledWith("new",0,0);expect(mock.setTrack).toHaveBeenLastCalledWith("新歌曲","新歌手",null);
+});

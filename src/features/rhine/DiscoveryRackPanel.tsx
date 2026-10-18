@@ -61,7 +61,7 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
   kind:RecommendationKind;accountKey:string;active:boolean;hidden:boolean;top:number;reduced:boolean;
   onOpen:(entity:CatalogEntity)=>void;onDeck?:()=>void;onSceneChange?:(state:DiscoveryState)=>void;
 }) {
-  const {page,error,pageNumber,busy,notice,act,refresh,goToPage}=useRecommendations({kind,accountKey,active,pageSize:DISCOVERY_PAGE_SIZE});
+  const {page,error,pageNumber,busy,notice,act,actAll,refresh,goToPage}=useRecommendations({kind,accountKey,active,pageSize:DISCOVERY_PAGE_SIZE});
   const [selectedId,setSelected]=useState<string|null>(null),[hovered,setHovered]=useState<string|null>(null),[scroll,setScroll]=useState(0);
   const scroller=useRef<HTMLDivElement>(null),dialog=useRef<HTMLElement>(null),trigger=useRef<HTMLElement|null>(null);
   const items=useMemo(()=>!page?[]:kind==="playlists"?(page as CatalogEntityPage).items.filter(e=>e.kind==="playlist").map(playlist=>({id:`playlist:${playlist.id}`,playlist,song:null})):
@@ -77,11 +77,17 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
   useEffect(()=>{if(selected&&active)dialog.current?.querySelector<HTMLButtonElement>("button")?.focus({preventScroll:true});},[selected?.id,active]);
   function close(){setSelected(null);setHovered(null);requestAnimationFrame(()=>trigger.current?.focus({preventScroll:true}));}
   async function play(){if(selected?.song&&await act(selected.song,"play"))onDeck?.();}
+  async function all(){if(await actAll()&&kind==="radar")onDeck?.();}
   const label=DISCOVERY_TABS.find(([tab])=>tab===kind)![1];
   return <section className="discovery-rack-pane" data-rack-tab={kind} data-scroll={scroll} aria-label={label} hidden={hidden} style={{"--rack-top":`${top}px`} as CSSProperties}
     onKeyDown={event=>{if(event.key==="Escape"&&selected){event.preventDefault();event.stopPropagation();close();}}}>
     <div className="discovery-toolbar"><p>{accountKey.startsWith("authenticated:")?"当前账号":"登录后可获得个人推荐"}{page&&` · 本页 ${items.length} ${kind==="playlists"?"张歌单":"首"}`}</p>
-      <button type="button" aria-label="刷新推荐" disabled={busy||!active} onClick={()=>{close();refresh();}}>↻ 刷新推荐</button></div>
+      <div className="discovery-toolbar-actions">
+        {kind!=="playlists"&&<button type="button" className="discovery-bulk-action" disabled={busy||!active||!items.length}
+          title={kind==="radar"?"清空当前播放列表，加入全部雷达推荐并播放":"将全部猜你喜欢追加到当前播放列表"}
+          onClick={()=>void all()}><Icon name={kind==="radar"?"play":"cassette-add"} size={14}/>{kind==="radar"?"播放雷达推荐":"全部添加进播放列表中"}</button>}
+        <button type="button" aria-label="刷新推荐" disabled={busy||!active} onClick={()=>{close();refresh();}}>↻ 刷新推荐</button>
+      </div></div>
     <div className="discovery-rack-scroll" ref={scroller} style={{overflowY:selected?"hidden":"auto"}} onScroll={e=>{const phase=e.currentTarget.closest<HTMLElement>("[data-phase]")?.dataset.phase;if(active&&(!phase||phase==="ready"))setScroll(e.currentTarget.scrollTop);}} onClick={e=>{if(selected&&e.target===e.currentTarget)close();}}>
       <div className="discovery-rack-space" role="group" aria-label={`${label}磁带架`} onClick={e=>{if(selected&&e.target===e.currentTarget)close();}}>
         {items.map(item=><button type="button" key={item.id} data-rack-id={item.id} className="discovery-rack-hit" tabIndex={selected&&selected.id!==item.id?-1:0}
@@ -90,7 +96,7 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
           onClick={e=>{trigger.current=e.currentTarget;setSelected(item.id);}}><span className="discovery-sr-only">{(item.song??item.playlist!).title}</span></button>)}
       </div>
     </div>
-    {(!page||error||!items.length)&&<div className="discovery-rack-state">{error?<p role="alert">推荐暂时不可用，检查网络后可刷新重试。</p>:!page?<p role="status">正在读取推荐…</p>:<p>暂时没有推荐内容，稍后刷新试试。</p>}</div>}
+    {(!page||error||!items.length)&&<div className="discovery-rack-state" data-loading={!page&&!error}>{error?<p role="alert">推荐暂时不可用，检查网络后可刷新重试。</p>:!page?<p role="status">正在读取推荐…</p>:<p>暂时没有推荐内容，稍后刷新试试。</p>}</div>}
     {selected&&<aside ref={dialog} className="discovery-dossier discovery-rack-dossier" role="dialog" aria-modal="true" aria-label="选中磁带档案" onKeyDown={event=>{
       if(event.key!=="Tab")return;const buttons=[...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];const first=buttons[0],last=buttons.at(-1);
       if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
@@ -103,7 +109,7 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
         <><p>{selected.playlist!.songCount} 首歌曲 · {selected.playlist!.listenCount.toLocaleString()} 次播放</p><p className="discovery-description">{selected.playlist!.description}</p><button className="discovery-primary" onClick={()=>onOpen(selected.playlist!)}>查看歌单 ↗</button></>}
       <p className="discovery-notice" role="status">{notice}</p>
     </aside>}
-    <footer className="discovery-rack-footer">{!!page?.warningCount&&<span>部分内容暂时不可用，已显示可用推荐。</span>}{page&&(kind!=="guess"||page.hasMore||pageNumber>1)&&<nav className="discovery-pages" aria-label="推荐分页">
+    <footer className="discovery-rack-footer">{!selected&&notice&&<p className="discovery-bulk-notice" role="status">{notice}</p>}{!!page?.warningCount&&<span>部分内容暂时不可用，已显示可用推荐。</span>}{page&&(kind!=="guess"||page.hasMore||pageNumber>1)&&<nav className="discovery-pages" aria-label="推荐分页">
       <button disabled={busy||pageNumber===1||!active} onClick={()=>{close();setScroll(0);goToPage(pageNumber-1);}}>上一页</button><span>第 {pageNumber} 页</span><button disabled={busy||!page.hasMore||!active} onClick={()=>{close();setScroll(0);goToPage(pageNumber+1);}}>下一页</button></nav>}</footer>
   </section>;
 }

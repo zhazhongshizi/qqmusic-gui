@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getRecommendedPlaylists, getRecommendedSongs, type RecommendationKind } from "../../backend/catalogDiscoveryAdapter";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import type { CatalogEntityPage } from "../../contracts/catalogBrowse";
-import { enqueueAndPlayCatalogTrack, enqueueCatalogTrack, enqueueNextCatalogTrack } from "../player/catalogQueue";
+import { CatalogQueuePlaybackError, MAX_CATALOG_QUEUE_ITEMS, enqueueAndPlayCatalogTrack, enqueueCatalogTrack, enqueueCatalogTracks, enqueueNextCatalogTrack, replaceAndPlayCatalogTracks } from "../player/catalogQueue";
 import { recommendationPages } from "./recommendationPages";
 
 export type RecommendationAction = "play" | "next" | "enqueue";
@@ -54,10 +54,57 @@ export function useRecommendations({ kind, accountKey, active = true, pageSize }
     } catch { if (isCurrent()) setMessage({ key, text: "操作失败，请重试" }); return false; }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   }
+  async function actAll() {
+    const loaded = current.current.state;
+    if (pending.current || !current.current.active || kind === "playlists" ||
+        loaded.key !== key || !loaded.page?.items.length) return false;
+    pending.current = true; setBusy(true);
+    setMessage({ key, text: "正在读取全部推荐…" });
+    const epoch = generation.current;
+    const isCurrent = () => mounted.current && current.current.active && current.current.key === key && epoch === generation.current;
+    const songs: CatalogSong[] = [], seen = new Set<string>();
+    let hasMore = true, queueAttempted = false;
+    try {
+      // Read from the shelf cache, including overflow beyond its nine visible tapes.
+      // Finish reading before changing the queue so a failed page cannot clear it.
+      for (let number = 1; hasMore && songs.length < MAX_CATALOG_QUEUE_ITEMS; number++) {
+        if (!isCurrent()) return false;
+        const result = (paged ? await paged(number, epoch) : number === pageNumber ? loaded.page :
+          await getRecommendedSongs(kind, epoch, number)) as CatalogSongPage;
+        if (!isCurrent()) return false;
+        if (paged && result.generation !== epoch) throw new Error("stale_recommendations");
+        for (const song of result.items) {
+          if (!seen.has(song.id) && songs.length < MAX_CATALOG_QUEUE_ITEMS) {
+            seen.add(song.id); songs.push(song);
+          }
+        }
+        hasMore = (result.hasMore && (paged !== null || (kind !== "guess" && number < 100))) ||
+          result.items.some(song => !seen.has(song.id));
+      }
+      if (!isCurrent()) return false;
+      if (!songs.length) { setMessage({ key, text: "没有可加入的推荐歌曲" }); return false; }
+      queueAttempted = true;
+      if (kind === "radar") {
+        const result = await replaceAndPlayCatalogTracks(songs, "preserve", isCurrent);
+        if (!result || !isCurrent()) return false;
+        setMessage({ key, text: `已替换播放列表，${hasMore || result.truncated ? "载入前" : "共"} ${result.loadedCount} 首并开始播放` });
+      } else {
+        await enqueueCatalogTracks(songs);
+        if (!isCurrent()) return false;
+        setMessage({ key, text: `已将${hasMore ? "前" : "全部"} ${songs.length} 首推荐加入播放列表` });
+      }
+      return true;
+    } catch (error) {
+      if (isCurrent()) setMessage({ key, text: !queueAttempted ? "读取全部推荐失败，播放列表未改动，请重试" :
+        error instanceof CatalogQueuePlaybackError && error.queueReplaced ? "已替换播放列表，但播放失败，请在播放器中重试" :
+        "操作失败，请检查播放列表后重试" });
+      return false;
+    } finally { pending.current = false; if (mounted.current) setBusy(false); }
+  }
   return {
     page: state.key === key ? state.page : undefined,
     error: state.key === key && !!state.error,
-    pageNumber, busy, notice: message.key === key ? message.text : "", act,
+    pageNumber, busy, notice: message.key === key ? message.text : "", act, actAll,
     refresh: () => { if (active && !pending.current) { setMessage({ key, text: "" }); setRetry(value => value + 1); } },
     goToPage: (number: number) => { if (active && !pending.current) setPagination({ context, number }); },
   };

@@ -68,6 +68,17 @@ const ease = (t: number) => {
 };
 export class ArchiveScene {
   private discovery?: DiscoveryRack;
+  private discoveryResources?: DiscoveryRack;
+  private discoveryEconomical = false;
+  private discoveryRack() {
+    if (this.discoveryResources && this.discoveryEconomical !== this.superPerformance) {
+      this.discoveryResources.dispose(); this.discoveryResources = undefined;
+    }
+    this.discoveryEconomical = this.superPerformance;
+    return this.discoveryResources ??= new DiscoveryRack(
+      () => cloneDiscoveryCassette(this.model, this.appearance, this.superPerformance),
+      (shell, clarity) => { if (!this.superPerformance) this.appearance.setClarity(shell, clarity); });
+  }
   private discoveryBackdrop?: DiscoveryBackdrop;
   private discoveryCamera?: THREE.PerspectiveCamera;
   onDiscoveryFrame?: (frame: DiscoveryFrame) => void;
@@ -75,15 +86,14 @@ export class ArchiveScene {
     if (!state) {
       this.discoveryBackdrop?.restore();this.discoveryBackdrop=undefined;
       if(this.discoveryCamera)this.camera.copy(this.discoveryCamera);
-      this.discovery?.dispose();this.discovery=undefined;this.discoveryCamera=undefined;
+      this.discovery?.root.removeFromParent();this.discovery=undefined;this.discoveryCamera=undefined;
       this.resize();return;
     }
     if(!this.discovery) {
       this.cancelPointer();this.setHover(null);this.canInspect=false;
       this.discoveryCamera=this.camera.clone();
       this.discoveryBackdrop=new DiscoveryBackdrop(this.instances,[this.model,...this.outgoing.map(o=>o.group)],this.camera);
-      this.discovery=new DiscoveryRack(() => cloneDiscoveryCassette(this.model,this.appearance,this.superPerformance),
-        (shell,clarity)=>{if(!this.superPerformance)this.appearance.setClarity(shell,clarity);});this.discovery.begin(this.camera,this.discoveryBackdrop.sources);
+      this.discovery=this.discoveryRack();this.discovery.begin(this.camera,this.discoveryBackdrop.sources);
       this.scene.add(this.discovery.root);
       this.resize();
       this.discovery.onFrame=frame=>{this.container.dataset.discovery=frame.phase;this.onDiscoveryFrame?.(frame);};
@@ -120,7 +130,7 @@ export class ArchiveScene {
   }
   revealImmediately() { this.invalidate(); this.reveal = this.targetReveal; }
   dispose() {
-    this.discovery?.dispose();this.discovery=undefined;
+    this.discoveryResources?.dispose();this.discoveryResources=undefined;this.discovery=undefined;
     this.onInvalidate = undefined;
     this.inputEvents.abort();
     this.cancelPointer();
@@ -399,7 +409,8 @@ export class ArchiveScene {
     // All composer passes see the same geometry within one application frame.
     // Generate the shadow map in the beauty pass and reuse it in depth/normal passes.
     this.renderer.shadowMap.autoUpdate = false;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Match the renderer's effective shadow type before precompiling materials.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.domElement.setAttribute(
@@ -658,6 +669,36 @@ export class ArchiveScene {
       this.deckMarks.push(mark);
     }
     this.model.position.copy(this.cellPosition(poolCell(this.selectedSlot)));
+    // Prepare the nine empty shells with the archive assets, before discovery
+    // can be opened. Keep their materials alive so later visits reuse programs.
+    const rack = this.discoveryRack();
+    rack.begin(this.camera, []);
+    rack.set({open:false,ready:false,key:"",entries:[],selected:null,hovered:null,scroll:0,top:166});
+    rack.update(0, this.container.clientWidth, this.container.clientHeight, this.camera.clone());
+    this.scene.add(rack.root);
+    this.scene.updateMatrixWorld(true);
+    const renderTarget = this.renderer.getRenderTarget();
+    const backs: THREE.MeshPhysicalMaterial[] = [];
+    try {
+      // Discovery renders directly to the screen; the archive composer and the
+      // glass capture use linear offscreen output. Prepare both program variants.
+      await this.renderer.compileAsync(this.scene, this.camera);
+      this.renderer.setRenderTarget(this.composer.readBuffer);
+      await this.renderer.compileAsync(this.scene, this.camera);
+      this.scene.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const material = object.material;
+        if (material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0 && material.side === THREE.DoubleSide && !backs.includes(material)) {
+          backs.push(material); material.side = THREE.BackSide; material.needsUpdate = true;
+        }
+      });
+      // WebGL's transmission capture also draws the back of double-sided glass.
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } finally {
+      for (const material of backs) { material.side = THREE.DoubleSide; material.needsUpdate = true; }
+      this.renderer.setRenderTarget(renderTarget);
+      rack.root.removeFromParent();
+    }
     this.loaded = true;
     this.invalidate();
   }
@@ -1476,9 +1517,15 @@ export class ArchiveScene {
       this.last=time;this.clock=time;
       const moving=this.discovery.update(dt,this.container.clientWidth,this.container.clientHeight,this.camera);
       this.discoveryBackdrop?.update(this.discovery.motion,this.discovery.count);
-      const fog=this.scene.fog;this.scene.fog=null;
-      const floor=this.scene.getObjectByName("archive-floor");if(floor)floor.visible=this.discovery.motion.spread<.2;
-      this.renderer.shadowMap.needsUpdate=true;this.renderer.render(this.scene,this.camera);this.scene.fog=fog;
+      // Keep USE_FOG stable: removing fog recompiles the whole archive on the
+      // first transition frame. Beyond the far plane it has no visible effect.
+      const fog=this.scene.fog instanceof THREE.Fog?this.scene.fog:null;
+      const near=fog?.near,far=fog?.far;
+      if(fog && !this.discovery.surfaceOnly){fog.near=this.camera.far+1;fog.far=this.camera.far+2;}
+      const floor=this.scene.getObjectByName("archive-floor");if(floor)floor.visible=this.discovery.surfaceOnly || this.discovery.motion.spread<.2;
+      this.renderer.shadowMap.needsUpdate=true;
+      try {this.renderer.render(this.scene,this.camera);}
+      finally {if(fog){fog.near=near!;fog.far=far!;}}
       this.sleeping=!moving;return moving;
     }
     const suppressPlaybackCassetteMotion = this.playbackCassetteMotionSuppressed;

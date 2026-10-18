@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { ARCHIVE_PAGE_DURATION } from "./discovery-layout";
 import { drawTextureQuad } from "./texture-quad-2d";
 import { SHELL, clearShellTexture, shellTexture } from "./cassette-shell-2d";
 import { disposeDiscoveryCassette } from "./discovery-cassette";
@@ -107,10 +108,11 @@ export class DiscoveryRack {
   readonly motion = new DiscoveryMotion();
   onFrame?: (frame: DiscoveryFrame) => void;
   state: DiscoveryState | null = null;
-  get count() { return this.tapes.length; }
+  get surfaceOnly() { return !!this.state?.surfaceOnly; }
+  get count() { return this.surfaceOnly ? 0 : this.tapes.length; }
   private tapes: Tape[] = [];
   private boards = new THREE.Group();
-  private entriesKey = "";
+  private entriesKey: string | null = null;
   private covers = new Map<string,HTMLImageElement>();
   private origins: DiscoverySource[] = [];
   private initialCamera?: THREE.PerspectiveCamera;
@@ -149,6 +151,13 @@ export class DiscoveryRack {
     }
   }
   begin(camera: THREE.PerspectiveCamera, origins: DiscoverySource[]) {
+    // Retain compiled shell materials across visits, but start every entry from
+    // its current archive camera with no stale selection or pending label swap.
+    this.motion.reset(); this.state = null; this.entriesKey = null;
+    for (const tape of this.tapes) {
+      this.clearInspection(tape); tape.lift = tape.extraction = 0; tape.selected = false;
+      if (tape.shell) this.setClarity?.(tape.shell, 0);
+    }
     this.initialCamera = camera.clone();
     this.origins = origins;
     const forward=camera.getWorldDirection(new THREE.Vector3());
@@ -156,7 +165,10 @@ export class DiscoveryRack {
     this.initialDistance=center?Math.max(1,center.sub(camera.position).dot(forward)):140;
     this.initialFocus.copy(camera.position).addScaledVector(forward,this.initialDistance);
   }
-  set(state: DiscoveryState) { this.state = state; }
+  set(state: DiscoveryState) {
+    if (!this.state && state.surfaceOnly && !state.open) this.motion.time = ARCHIVE_PAGE_DURATION;
+    this.state = state;
+  }
   cover(id: string, image: HTMLImageElement) {
     this.covers.set(id,image);
     const tape=this.tapes.find(t=>t.id===id),entry=this.displayed.find(t=>t.id===id);
@@ -192,8 +204,25 @@ export class DiscoveryRack {
   private syncEntries() {
     if(!this.state||this.entriesKey===this.motion.key)return;
     this.entriesKey=this.motion.key;
-    this.clearTapes(); this.displayed=discoverySlots(this.state.entries);
+    this.displayed=this.state.surfaceOnly ? [] : discoverySlots(this.state.entries);
     const ids=new Set(this.displayed.map(e=>e.id)); for(const id of this.covers.keys())if(!ids.has(id))this.covers.delete(id);
+    // Category/page changes replace the print at zero opacity. Keep the nine
+    // physical tapes, their materials and any in-progress return motion intact.
+    if(this.tapes.length===this.displayed.length) {
+      this.tapes.forEach((tape,index)=>{
+        const entry=this.displayed[index];tape.id=entry.id;
+        tape.selected=entry.kind!=="blank"&&this.state!.selected===entry.id;
+        drawDiscoveryFace(tape.face,entry,this.covers.get(entry.id),tape.selected);tape.texture.needsUpdate=true;
+        drawDiscoveryTop(tape.top,entry,tape.selected);tape.topTexture.needsUpdate=true;
+        if(tape.inspection) {
+          drawCassetteCover(tape.inspection.cover,this.covers.get(entry.id)??null,entry.title);
+          drawCassetteLabel(tape.inspection.label,entry.title,entry.subtitle);
+          tape.inspection.coverPrint.material.map!.needsUpdate=true;tape.inspection.labelPrint.material.map!.needsUpdate=true;
+        }
+      });
+      return;
+    }
+    this.clearTapes();
     for(const entry of this.displayed) {
       const face=document.createElement("canvas");drawDiscoveryFace(face,entry,this.covers.get(entry.id));
       const texture=new THREE.CanvasTexture(face);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
@@ -215,7 +244,17 @@ export class DiscoveryRack {
   private disposeBoards() {for(const o of this.boards.children)(o as THREE.Mesh).geometry.dispose();this.boards.clear();}
   update(dt: number, width: number, height: number, camera: THREE.PerspectiveCamera): boolean {
     const state=this.state;if(!state||!this.initialCamera)return false;
-    this.motion.step(dt,state);this.syncEntries();
+    this.motion.step(dt,state);
+    if (state.surfaceOnly) {
+      // Keep each page's own camera and array; only the shared wave changes.
+      camera.copy(this.initialCamera); camera.aspect=width/height; camera.updateProjectionMatrix();
+      this.root.visible=false;
+      const phase=this.motion.phase(state);
+      this.onFrame?.({phase,progress:this.motion.time/ARCHIVE_PAGE_DURATION,rects:[],contentHeight:height});
+      return phase!=="ready" && phase!=="closed";
+    }
+    this.root.visible=true;
+    this.syncEntries();
     const layout=discoveryLayout(width,height,this.tapes.length,state.top);
     const scale=layout.tapeWidth/5, cameraProgress=this.motion.camera;
     const target=this.targetCamera;target.aspect=width/height;target.near=.1;target.far=500;
@@ -279,7 +318,7 @@ export class DiscoveryRack {
       const s=this.motion.tapeSpread(i,this.tapes.length);
       const pose=discoveryEase((tape.extraction-.1)/.9)*s,clearance=discoveryEase(tape.extraction/.35)*s;
       end.lerp(inspectionPosition,pose).addScaledVector(depth,(clearance-pose)*10);
-      end.y+=tape.lift-(1-this.motion.swap)*.65;
+      end.y+=tape.lift;
       const source=this.origins[i];
       const origin=source?.position.clone()??new THREE.Vector3((i%5-2)*5.4,-4.6,(Math.floor(i/5)-4)*.7);
       origin.y=-4.6;
@@ -287,15 +326,16 @@ export class DiscoveryRack {
       tape.group.position.copy(origin).lerp(end,s);
       tape.group.position.y+=arc*1.2;tape.group.position.addScaledVector(depth,arc*.3);
       tape.group.quaternion.setFromEuler(source?.flattenedRotation??source?.rotation??new THREE.Euler()).slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(-.08*s,0,0)),s).slerp(inspectionRotation,pose);
-      const endScale=mix(1,inspectionScale,pose)*(1-.08*(1-this.motion.swap));
+      const endScale=mix(1,inspectionScale,pose);
       tape.group.scale.copy(source?.scale??new THREE.Vector3(1,1,1)).lerp(new THREE.Vector3(endScale,endScale,endScale),s);
-      tape.group.visible=this.motion.handoff&&this.motion.swap>0;
+      tape.group.visible=this.motion.handoff;
       const mat=tape.print.material;
       mat.color.setScalar(state.selected && !selected ? .72 : .94+.06*this.motion.labels);
       const artwork=discoveryEase((tape.extraction-.18)/.64);
-      mat.opacity=blank?0:this.motion.labels*(1-artwork);
-      tape.topPrint.material.opacity=blank?0:this.motion.labels*(1-artwork);
-      if(tape.inspection)for(const mesh of [tape.inspection.coverPrint,tape.inspection.labelPrint])mesh.material.opacity=this.motion.labels*artwork;
+      const labelOpacity=this.motion.labels*this.motion.contentOpacity;
+      mat.opacity=blank?0:labelOpacity*(1-artwork);
+      tape.topPrint.material.opacity=blank?0:labelOpacity*(1-artwork);
+      if(tape.inspection)for(const mesh of [tape.inspection.coverPrint,tape.inspection.labelPrint])mesh.material.opacity=blank?0:labelOpacity*artwork;
       tape.group.updateMatrixWorld(true);
       const corners=[SHELL.back,.27].flatMap(z=>[[-2.5,3.72],[2.5,3.72],[2.5,0],[-2.5,0]].map(([x,y])=>new THREE.Vector3(x,y,z).applyMatrix4(tape.group.matrixWorld).project(camera)));
       const xs=corners.map(p=>(p.x+1)*width/2),ys=corners.map(p=>(1-p.y)*height/2);
@@ -340,7 +380,7 @@ export class DiscoveryRack {
         drawTextureQuad(context,texture.image as HTMLCanvasElement,[p(0,0),p(1,0),p(1,1),p(0,1)],p,true);
         context.restore();
         const dim=1-(mesh.material as THREE.MeshBasicMaterial).color.r;
-        if(dim>0){context.save();context.globalAlpha=dim;polygon([p(0,0),p(1,0),p(1,1),p(0,1)],"#000");context.restore();}
+        if(dim>0){context.save();context.globalAlpha=dim*(mesh.material as THREE.MeshBasicMaterial).opacity;polygon([p(0,0),p(1,0),p(1,1),p(0,1)],"#000");context.restore();}
       }
     }
   }
