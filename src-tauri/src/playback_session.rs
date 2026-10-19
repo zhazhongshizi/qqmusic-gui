@@ -1034,6 +1034,45 @@ impl PlaybackSession {
             .operation
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.play_unlocked()
+    }
+
+    pub(crate) fn toggle_playback(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        let (intent, track) = {
+            let _operation = self
+                .operation
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let snapshot = self.snapshot_unlocked();
+            if matches!(
+                snapshot.player.state,
+                crate::player::PlayerState::Playing | crate::player::PlayerState::Loading
+            ) {
+                return self.pause_unlocked();
+            }
+            if snapshot.player.current_track.is_some()
+                && !matches!(
+                    snapshot.player.state,
+                    crate::player::PlayerState::Idle | crate::player::PlayerState::Failed
+                )
+            {
+                return self.play_unlocked();
+            }
+            if snapshot.queue.items.is_empty() {
+                return Ok(snapshot.player);
+            }
+            let index = snapshot.queue.selected_index.unwrap_or(0);
+            let track = self
+                .queue
+                .select(index)
+                .map_err(PlaybackSessionError::Queue)?;
+            (self.new_play_intent(), track)
+        };
+        self.play_selected(intent, track, PlaybackQuality::Auto)?;
+        Ok(self.snapshot().player)
+    }
+
+    fn play_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
         let snapshot = self
             .playback
             .play()
@@ -1048,6 +1087,10 @@ impl PlaybackSession {
             .operation
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.pause_unlocked()
+    }
+
+    fn pause_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
         let snapshot = self
             .playback
             .pause()
@@ -1307,6 +1350,20 @@ impl PlaybackSession {
             .operation
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.set_volume_unlocked(volume)
+    }
+
+    /// Read and change volume under the same lock so rapid shortcuts retain every step.
+    pub(crate) fn adjust_volume(&self, delta: f32) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        let _operation = self
+            .operation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let volume = (self.playback.snapshot().volume + delta).clamp(0.0, 1.0);
+        self.set_volume_unlocked(volume)
+    }
+
+    fn set_volume_unlocked(&self, volume: f32) -> Result<PlayerSnapshot, PlaybackSessionError> {
         let snapshot = self
             .playback
             .set_volume(volume)
@@ -3123,6 +3180,135 @@ mod tests {
         // Immediate poll before backoff deadline returns Ok(None)
         assert_eq!(test.session.advance_if_ended(), Ok(None));
         assert_eq!(test.requests.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn shortcut_toggle_starts_restored_selection_and_handles_empty_queue() {
+        for local in [false, true] {
+            let test = SeekSession::restored(local);
+            assert!(test.session.snapshot().player.current_track.is_none());
+            let player = test.session.toggle_playback().unwrap();
+            // This fake engine starts transport synchronously, unlike the seek resume path.
+            assert_eq!(player.state, PlayerState::Playing);
+            assert_eq!(
+                player.current_track.unwrap().id,
+                test.session.snapshot().queue.items[1].id
+            );
+            assert_eq!(test.session.snapshot().queue.selected_index, Some(1));
+            assert_eq!(test.requests.load(Ordering::SeqCst), usize::from(!local));
+            assert_eq!(
+                test.session.toggle_playback().unwrap().state,
+                PlayerState::Paused
+            );
+            assert_eq!(
+                test.session.toggle_playback().unwrap().state,
+                PlayerState::Playing
+            );
+        }
+        let test = SeekSession::restored(false);
+        test.session.replace_queue(vec![]).unwrap();
+        assert_eq!(
+            test.session.toggle_playback().unwrap().state,
+            PlayerState::Idle
+        );
+        assert_eq!(test.requests.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn shortcut_toggle_uses_serial_transport_and_pauses_loading() {
+        for state in [
+            PlayerState::Paused,
+            PlayerState::Playing,
+            PlayerState::Loading,
+            PlayerState::Ended,
+        ] {
+            let root = std::env::temp_dir().join(format!("qqmusic-toggle-{}", Uuid::new_v4()));
+            fs::create_dir_all(&root).unwrap();
+            let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
+            let requests = Arc::new(AtomicUsize::new(0));
+            let playback = Arc::new(PlaybackController::with_resolver(
+                Arc::new(CountingProvider {
+                    requests: requests.clone(),
+                }),
+                Box::new(EventPlayer {
+                    snapshot: PlayerSnapshot {
+                        state,
+                        current_track: Some(TrackSummary {
+                            source: None,
+                            id: "one".into(),
+                            title: "Track one".into(),
+                            artist: "Artist".into(),
+                        }),
+                        ..PlayerSnapshot::idle()
+                    },
+                    events: Mutex::new(VecDeque::new()),
+                }),
+                Arc::new(FakeResolver),
+            ));
+            let session = PlaybackSession::new(queue, playback);
+            let expected = if matches!(state, PlayerState::Playing | PlayerState::Loading) {
+                PlayerState::Paused
+            } else {
+                PlayerState::Playing
+            };
+            assert_eq!(session.toggle_playback().unwrap().state, expected);
+            thread::scope(|scope| {
+                for _ in 0..10 {
+                    scope.spawn(|| {
+                        session.toggle_playback().unwrap();
+                    });
+                }
+            });
+            assert_eq!(session.snapshot().player.state, expected);
+            assert_eq!(requests.load(Ordering::SeqCst), 0);
+            drop(session);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn shortcut_volume_steps_clamp_preserve_mute_and_persist() {
+        let root = std::env::temp_dir().join(format!("qqmusic-volume-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
+        let playback = Arc::new(PlaybackController::with_resolver(
+            Arc::new(CountingProvider {
+                requests: Arc::new(AtomicUsize::new(0)),
+            }),
+            Box::new(EventPlayer {
+                snapshot: PlayerSnapshot {
+                    muted: true,
+                    ..PlayerSnapshot::idle()
+                },
+                events: Mutex::new(VecDeque::new()),
+            }),
+            Arc::new(FakeResolver),
+        ));
+        let session = PlaybackSession::new(queue.clone(), playback);
+        session.set_volume(0.37).unwrap();
+        assert!((session.adjust_volume(0.1).unwrap().volume - 0.47).abs() < 0.00001);
+        assert!((session.adjust_volume(-0.1).unwrap().volume - 0.37).abs() < 0.00001);
+        session.set_volume(0.96).unwrap();
+        assert_eq!(session.adjust_volume(0.1).unwrap().volume, 1.0);
+        session.set_volume(0.04).unwrap();
+        assert_eq!(session.adjust_volume(-0.1).unwrap().volume, 0.0);
+        assert_eq!(session.adjust_volume(-0.1).unwrap().volume, 0.0);
+
+        // Parallel button presses must not read the same stale volume and lose steps.
+        thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    session.adjust_volume(0.1).unwrap();
+                });
+            }
+        });
+        assert!((session.snapshot().player.volume - 0.8).abs() < 0.00001);
+        assert!(session.snapshot().player.muted);
+        let saved = queue.load_playback_preferences().unwrap().1;
+        assert!((saved - 0.8).abs() < 0.00001);
+        drop(session);
+        drop(queue);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

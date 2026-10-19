@@ -5,6 +5,7 @@
   "windows": ["main"],
   "platforms": ["windows"],
   "permissions": [
+    "allow-shortcuts-control",
     "allow-logging-status",
     "allow-logging-set-enabled",
     "allow-logging-frontend-error",

@@ -5,6 +5,22 @@ use crate::{
 };
 
 #[tauri::command]
+pub(crate) fn shortcuts_control(
+    app: tauri::AppHandle,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    #[cfg(windows)]
+    {
+        crate::global_shortcuts::control(&app, request)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, request);
+        Err("全局快捷键仅适用于 Windows 桌面版".into())
+    }
+}
+
+#[tauri::command]
 pub(crate) fn app_snapshot(state: State<'_, AppState>) -> AppSnapshot {
     state.snapshot()
 }

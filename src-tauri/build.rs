@@ -6,6 +6,7 @@ fn main() {
             tauri_build::WindowsAttributes::new().window_icon_path("icons/icon.ico"),
         )
         .app_manifest(tauri_build::AppManifest::new().commands(&[
+            "shortcuts_control",
             "logging_status",
             "logging_set_enabled",
             "logging_frontend_error",

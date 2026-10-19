@@ -10,6 +10,7 @@ import { SmartShuffleToggle } from "../features/player/SmartShuffleToggle";
 import { MvFallbackSetting } from "../features/player/MvPlaybackSettings";
 import { RemoteControlSettings } from "../features/player/RemoteControlSettings";
 import { LoggingSettings } from "../features/player/LoggingSettings";
+import { ShortcutSettings } from "../features/player/ShortcutSettings";
 import UpdateSettings from "../features/player/UpdateSettings";
 import { QueueDrawer } from "../features/player/QueueDrawer";
 import { ListeningStage } from "../features/stage/ListeningStage";
@@ -261,6 +262,7 @@ function StageSettings({
         <SmartShuffleToggle />
         <MvFallbackSetting />
         <RemoteControlSettings />
+        <ShortcutSettings />
         <LoggingSettings />
         <UpdateSettings />
         <div className="fixture-menu__divider" role="separator" />

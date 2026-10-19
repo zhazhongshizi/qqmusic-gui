@@ -7,6 +7,8 @@ mod desktop;
 pub mod device_identity;
 pub mod diagnostics;
 mod file_logging;
+#[cfg(windows)]
+mod global_shortcuts;
 pub mod library;
 mod listening_analytics;
 pub mod listening_stats;
@@ -959,6 +961,9 @@ pub fn run() {
             {
                 app.manage(AppState::initialize(app.handle()));
                 desktop::install_tray(app.handle())?;
+                if !release_smoke::active() {
+                    global_shortcuts::install(app.handle())?;
+                }
                 if release_smoke::active() {
                     for config in &app.config().app.windows {
                         tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
@@ -983,6 +988,7 @@ pub fn run() {
             desktop::handle_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            commands::settings::shortcuts_control,
             file_logging::logging_status,
             file_logging::logging_set_enabled,
             file_logging::logging_frontend_error,

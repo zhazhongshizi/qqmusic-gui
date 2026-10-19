@@ -10,12 +10,13 @@ import type { ArchiveRenderer, RhineFrameLimit, RhineSettings } from "./rhineSet
 import { MvFallbackSetting } from "../player/MvPlaybackSettings";
 import { SmartShuffleToggle } from "../player/SmartShuffleToggle";
 import UpdateSettings from "../player/UpdateSettings";
+import { ShortcutSettings } from "../player/ShortcutSettings";
 
 import { isPlaybackQuality, PLAYBACK_QUALITY_OPTIONS } from "../../contracts/settings";
 import { playerActions, usePlayerSelector } from "../player/playerStore";
 
 type Choice = { value: string | number; label: string; disabled?: boolean };
-type SettingsSection = "quality" | "details" | "playback" | "account";
+type SettingsSection = "quality" | "details" | "playback" | "account" | "shortcuts";
 
 function ChoiceField({
   label,
@@ -80,6 +81,7 @@ const sections: readonly { id: SettingsSection; label: string; index: string }[]
   { id: "details", label: "详细参数", index: "02" },
   { id: "playback", label: "播放设置", index: "03" },
   { id: "account", label: "账号与界面", index: "04" },
+  { id: "shortcuts", label: "快捷键设置", index: "05" },
 ];
 
 function DefaultQualitySetting() {
@@ -220,6 +222,13 @@ export function RhineSettingsPanel({
           </div>
           <DefaultQualitySetting />
           <SmartShuffleToggle presentation="rhine" />
+        </section>}
+
+        {section === "shortcuts" && <section className="rhine-settings-section">
+          <div className="rhine-settings-section-heading">
+            <div><p className="rhine-eyebrow">05 / SHORTCUTS</p><h2 id={titleId}>快捷键设置</h2></div>
+          </div>
+          <ShortcutSettings presentation="rhine" />
         </section>}
 
         {section === "account" && <section className="rhine-settings-section">
