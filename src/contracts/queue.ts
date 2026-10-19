@@ -29,7 +29,13 @@ export interface QueuePlayResult {
 
 export type NativePlaybackMode = "sequence" | "repeat-all" | "repeat-one" | "shuffle";
 
+export interface PlaybackSkipNotice {
+  readonly title: string;
+  readonly exhausted: boolean;
+}
+
 export interface PlaybackSessionSnapshot {
+  readonly skipNotice?: PlaybackSkipNotice;
   readonly lyricOffsetMs?: number;
   readonly actualQuality?: "flac" | "320k" | "128k" | "local" | "qq-mv" | null;
   readonly requestedQuality: PlaybackQuality;

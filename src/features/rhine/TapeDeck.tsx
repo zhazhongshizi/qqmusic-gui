@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CommitRange } from "../player/CommitRange";
+import { PlaybackNotice } from "../player/PlaybackNotice";
 import { Icon } from "../../components/Icon";
 import { DeckCaption } from "./DeckCaption";
 import { DeckOutroPreview } from "./DeckOutroPreview";
@@ -86,6 +87,7 @@ export function TapeDeck({ playlistTitle, onBack, onLyrics, onQueue }: { playlis
     if (direction < 0) playerActions.previous(); else playerActions.next();
   }
   return <section className="rhine-deck" aria-label="磁带机" data-playing={playing && !error}>
+    <PlaybackNotice />
     <button className="rhine-deck-back" onClick={onBack}>↙ 返回音乐档案</button>
     <DeckCaption track={track ?? null} playlistTitle={playlistTitle} direction={() => performance.now() < captionIntent.current.until ? captionIntent.current.direction : 0} />
     <DeckOutroPreview />

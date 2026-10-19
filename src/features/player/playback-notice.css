@@ -1,0 +1,22 @@
+.playback-notice {
+  position: fixed;
+  box-sizing: border-box;
+  z-index: 150;
+  right: 24px;
+  bottom: 132px;
+  max-width: min(520px, calc(100vw - 48px));
+  padding: 14px 20px;
+  border: 1px solid rgba(228, 237, 247, .24);
+  border-radius: 12px;
+  background: rgba(27, 42, 58, .96);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .2);
+  color: #f2f6fb;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .playback-notice { right: 16px; bottom: 148px; max-width: calc(100vw - 32px); }
+}

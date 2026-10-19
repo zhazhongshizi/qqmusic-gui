@@ -36,7 +36,7 @@ import { getLikedSongs, setSongsLiked } from "../../backend/libraryAdapter";
 import type { PlayerSnapshot as NativePlayerSnapshot } from "../../contracts/appSnapshot";
 import { nativeTrack, actualQuality, expectedQuality, qualityFromExpected } from "./nativeTrack";
 import type { TimedLyricLine } from "../../contracts/lyrics";
-import type { PlaybackSessionSnapshot, QueueSnapshot } from "../../contracts/queue";
+import type { PlaybackSessionSnapshot, PlaybackSkipNotice, QueueSnapshot } from "../../contracts/queue";
 import { isPlaybackQuality, type PlaybackQuality } from "../../contracts/settings";
 import { FIXTURE_TRACKS, type Track } from "./fixtures";
 
@@ -63,6 +63,7 @@ export interface PlayerSnapshot {
   readonly likePendingIds?: readonly string[];
   readonly likeNotice?: string | null;
   readonly playbackError: PlaybackErrorState | null;
+  readonly skipNotice?: PlaybackSkipNotice | null;
 }
 
 export interface PlaybackErrorState {
@@ -106,6 +107,7 @@ const initialSnapshot: PlayerSnapshot = {
   requestedQuality: "flac",
   likedIds: ["fixture-paper-moon"],
   playbackError: null,
+  skipNotice: null,
 };
 
 let snapshot = initialSnapshot;
@@ -147,6 +149,7 @@ function applyNative(
   requestedQuality?: PlaybackQuality,
   lyricOffsetMs?: number,
   controls: ControlVersions = controlVersions(),
+  skipNotice: PlaybackSkipNotice | null | undefined = undefined,
 ) {
   if (nativeSessionIdentity !== playbackSessionIdentity()) {
     nativeSessionIdentity = playbackSessionIdentity();
@@ -224,6 +227,11 @@ function applyNative(
     nativeFailureKey = null;
     playbackError = null;
   }
+  const notice = skipNotice === undefined ? snapshot.skipNotice : skipNotice;
+  if (notice) {
+    playbackError = null;
+    playbackRetry = null;
+  }
   lastNativeQueue = queue;
   emit({
     nativeMode: true,
@@ -246,6 +254,8 @@ function applyNative(
     likePendingIds: snapshot.likePendingIds,
     likeNotice: snapshot.likeNotice,
     playbackError,
+    skipNotice: notice?.title === snapshot.skipNotice?.title && notice?.exhausted === snapshot.skipNotice?.exhausted
+      ? snapshot.skipNotice : notice,
   });
 }
 
@@ -788,10 +798,10 @@ export const playerActions = {
     const controls = controlVersions();
     const nextSession = session ?? await nativePlaybackSessionSnapshot(lastNativeQueue);
     if (identity !== playbackSessionIdentity()) return;
-    applyNative(nextSession.queue, nextSession.player, nextSession.actualQuality ?? undefined, nextSession.mode, nextSession.requestedQuality, nextSession.lyricOffsetMs ?? 0, controls);
+    applyNative(nextSession.queue, nextSession.player, nextSession.actualQuality ?? undefined, nextSession.mode, nextSession.requestedQuality, nextSession.lyricOffsetMs ?? 0, controls, nextSession.skipNotice ?? null);
   },
   applyAuthoritativeSession(session: PlaybackSessionSnapshot) {
-    applyNative(session.queue, session.player, session.actualQuality ?? undefined, session.mode, session.requestedQuality, session.lyricOffsetMs ?? 0);
+    applyNative(session.queue, session.player, session.actualQuality ?? undefined, session.mode, session.requestedQuality, session.lyricOffsetMs ?? 0, controlVersions(), session.skipNotice ?? null);
     clearPlaybackError();
   },
   applyTimedLyrics(trackId: string, generation: number, lyrics: readonly TimedLyricLine[]) {

@@ -47,6 +47,14 @@ function setTauriRuntime(enabled: boolean) {
 }
 
 describe("native queue adapter", () => {
+  it("accepts only the typed skip notice and keeps incremental snapshots compatible", () => {
+    const session = { mode: "sequence", requestedQuality: "320k", queue: null, player: PLAYER,
+      skipNotice: { title: "おじゃま虫Ⅱ", exhausted: false } };
+    expect(parsePlaybackSessionSnapshot(session, SNAPSHOT).skipNotice).toEqual(session.skipNotice);
+    for (const notice of [null, { title: "x", exhausted: "false" }, { title: "", exhausted: false }, { title: "x", exhausted: false, url: "secret" }]) {
+      expect(() => parsePlaybackSessionSnapshot({ ...session, skipNotice: notice }, SNAPSHOT)).toThrow(QueueAdapterError);
+    }
+  });
   it("reuses only the queue supplied with the incremental request and validates changed queues", async () => {
     const session = { mode: "sequence", queue: null, player: PLAYER, requestedQuality: "320k" };
     invokeMock.mockResolvedValueOnce(session);

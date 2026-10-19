@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { CommitRange } from "./CommitRange";
+import { PlaybackNotice } from "./PlaybackNotice";
 
 import { Icon } from "../../components/Icon";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -75,6 +76,7 @@ export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
 
   return (
     <footer className="player-bar" aria-label="播放器控制">
+      <PlaybackNotice />
       <div className="player-bar__track">
         <AlbumArtwork compact track={track} />
         <div>

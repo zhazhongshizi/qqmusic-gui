@@ -13,7 +13,7 @@
 </div>
 
 
-> 当前源码与构建版本：**1.2.1**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
+> 当前源码与构建版本：**1.3.0**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
 
 ## 功能
 
@@ -69,7 +69,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.2.1；线上发行版本以官方页面为准。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.3.0；线上发行版本以官方页面为准。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider` 文件夹。
 3. 运行 `qqmusic-gui.exe`。发行版包含 Python Provider，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。
@@ -113,6 +113,8 @@
 | Ctrl + Alt + ↓ | 播放器音量降低 10 个百分点 |
 
 音量限制在 0%～100%，自动保存，不改变 Windows 系统音量。完全退出软件后释放快捷键。设置会显示重复组合或被其他程序占用的错误；保存失败时保留原配置。启动时未能注册的操作也会在快捷键设置中显示，可改用其他组合后重新保存。
+
+歌曲资源不可用、本地文件丢失或解码失败时，普通界面和莱茵磁带机会显示歌曲名称并尝试切换下一首。连续失败不会重复尝试同一首；到达队尾或没有可用候选时停止。手动点播、暂停、停止或替换队列可取消待执行的跳过。网络、登录或设备限制会保留原错误，避免无意义地扫描整份队列。
 
 ### 莱茵性能设置
 

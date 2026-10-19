@@ -124,16 +124,23 @@ export function parseQueuePlayResult(value: unknown): QueuePlayResult {
 }
 
 export function parsePlaybackSessionSnapshot(value: unknown, knownQueue?: QueueSnapshot): PlaybackSessionSnapshot {
-  const keys = [...SESSION_KEYS, ...["actualQuality", "lyricOffsetMs"].filter(key => typeof value === "object" && value !== null && key in value)];
+  const keys = [...SESSION_KEYS, ...["actualQuality", "lyricOffsetMs", "skipNotice"].filter(key => typeof value === "object" && value !== null && key in value)];
   const record = exactRecord(value, keys);
   const actualQuality = record.actualQuality;
   if (record.lyricOffsetMs !== undefined && (!Number.isSafeInteger(record.lyricOffsetMs) || Math.abs(record.lyricOffsetMs as number) > 60000)) return invalid();
   if (actualQuality !== undefined && actualQuality !== null && (typeof actualQuality !== "string" || !["flac", "320k", "128k", "local", "qq-mv"].includes(actualQuality))) return invalid();
   const mode = record.mode;
+  let skipNotice: PlaybackSessionSnapshot["skipNotice"];
+  if (record.skipNotice !== undefined) {
+    const notice = exactRecord(record.skipNotice, ["title", "exhausted"]);
+    if (typeof notice.exhausted !== "boolean") return invalid();
+    skipNotice = { title: displayText(notice.title), exhausted: notice.exhausted };
+  }
   if (!(["sequence", "repeat-all", "repeat-one", "shuffle"] as const).includes(mode as NativePlaybackMode)) {
     return invalid();
   }
   return {
+    ...(skipNotice ? { skipNotice } : {}),
     ...(record.lyricOffsetMs !== undefined ? { lyricOffsetMs: record.lyricOffsetMs as number } : {}),
     ...(actualQuality !== undefined ? { actualQuality: actualQuality as PlaybackSessionSnapshot["actualQuality"] } : {}),
     requestedQuality: parseQuality(record.requestedQuality),

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, RwLock, Weak,
@@ -22,6 +23,22 @@ use crate::{
 };
 
 const AUTO_ADVANCE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const FAILED_TRACK_SKIP_DELAY: Duration = Duration::from_millis(1200);
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackSkipNotice {
+    pub title: String,
+    pub exhausted: bool,
+}
+
+#[derive(Default)]
+struct FailedTracks {
+    ids: HashSet<String>,
+    pending: Option<(u64, String, Instant)>,
+    resolving: bool,
+    notice: Option<(PlaybackSkipNotice, Instant)>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -47,6 +64,8 @@ impl PlaybackMode {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSessionSnapshot {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_notice: Option<PlaybackSkipNotice>,
     #[serde(skip_serializing_if = "is_zero_offset")]
     pub lyric_offset_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,6 +79,8 @@ pub struct PlaybackSessionSnapshot {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSessionUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_notice: Option<PlaybackSkipNotice>,
     #[serde(skip_serializing_if = "is_zero_offset")]
     pub lyric_offset_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,6 +133,7 @@ pub struct PlaybackSession {
     handled_ended_generation: Mutex<Option<u64>>,
     handled_failed_generation: Mutex<Option<u64>>,
     auto_advance_retry: Mutex<Option<AutoAdvanceRetry>>,
+    failed_tracks: Mutex<FailedTracks>,
     active_source: Mutex<Option<ActiveSource>>,
     pending_resume: Mutex<Option<PendingResume>>,
     resume_transport: Mutex<Option<(u64, bool)>>,
@@ -206,6 +228,7 @@ impl PlaybackSession {
             handled_ended_generation: Mutex::new(None),
             handled_failed_generation: Mutex::new(None),
             auto_advance_retry: Mutex::new(None),
+            failed_tracks: Mutex::new(FailedTracks::default()),
             active_source: Mutex::new(None),
             pending_resume: Mutex::new(None),
             resume_transport: Mutex::new(None),
@@ -271,6 +294,20 @@ impl PlaybackSession {
             .next_override
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        let recovering = {
+            let failed = self
+                .failed_tracks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            failed.pending.is_some() || failed.resolving
+        };
+        if recovering {
+            self.new_play_intent();
+        }
+        *self
+            .failed_tracks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = FailedTracks::default();
         Ok(queue)
     }
 
@@ -672,6 +709,7 @@ impl PlaybackSession {
     fn snapshot_unlocked(&self) -> PlaybackSessionSnapshot {
         let player = self.player_snapshot_with_pending_seek();
         PlaybackSessionSnapshot {
+            skip_notice: self.skip_notice(),
             lyric_offset_ms: *self
                 .mv_lyric_offset
                 .lock()
@@ -697,6 +735,7 @@ impl PlaybackSession {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let player = self.player_snapshot_with_pending_seek();
         PlaybackSessionUpdate {
+            skip_notice: self.skip_notice(),
             lyric_offset_ms: *self
                 .mv_lyric_offset
                 .lock()
@@ -906,6 +945,16 @@ impl PlaybackSession {
     }
 
     pub fn advance_if_ended(&self) -> Result<Option<SessionPlayResult>, PlaybackSessionError> {
+        let recovering = {
+            let failed = self
+                .failed_tracks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            failed.pending.is_some() || failed.resolving
+        };
+        if recovering {
+            return Ok(None);
+        }
         if self.playback.cached_snapshot().state != PlayerState::Ended {
             return Ok(None);
         }
@@ -974,6 +1023,14 @@ impl PlaybackSession {
                 Ok(Some(result))
             }
             Err(error) => {
+                if self.skip_notice().is_some() {
+                    *self
+                        .handled_ended_generation
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        Some(ended_generation);
+                    return Err(error);
+                }
                 let is_transient = playback_session_error_is_transient(&error);
                 if is_transient && attempt < 3 {
                     let delay = if attempt == 1 {
@@ -1091,6 +1148,16 @@ impl PlaybackSession {
     }
 
     fn pause_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        let cancel_skip = {
+            let failed = self
+                .failed_tracks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            failed.pending.is_some() || failed.resolving
+        };
+        if cancel_skip {
+            self.new_play_intent();
+        }
         let snapshot = self
             .playback
             .pause()
@@ -1420,15 +1487,23 @@ impl PlaybackSession {
         append_history: bool,
         resume_play: bool,
     ) -> Result<SessionPlayResult, PlaybackSessionError> {
-        self.play_selected_with_resume_internal(
+        let result = self.play_selected_with_resume_internal(
             intent,
-            track,
+            track.clone(),
             quality,
             resume_ms,
             append_history,
             resume_play,
             false,
-        )
+        );
+        if result.as_ref().is_err_and(song_cannot_play) {
+            let _operation = self
+                .operation
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.schedule_failed_track(intent, &track);
+        }
+        result
     }
 
     fn play_selected_with_resume_locked(
@@ -1440,15 +1515,19 @@ impl PlaybackSession {
         append_history: bool,
         resume_play: bool,
     ) -> Result<SessionPlayResult, PlaybackSessionError> {
-        self.play_selected_with_resume_internal(
+        let result = self.play_selected_with_resume_internal(
             intent,
-            track,
+            track.clone(),
             quality,
             resume_ms,
             append_history,
             resume_play,
             true,
-        )
+        );
+        if result.as_ref().is_err_and(song_cannot_play) {
+            self.schedule_failed_track(intent, &track);
+        }
+        result
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1638,7 +1717,139 @@ impl PlaybackSession {
         }
     }
 
+    fn skip_notice(&self) -> Option<PlaybackSkipNotice> {
+        self.failed_tracks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .notice
+            .as_ref()
+            .filter(|(_, until)| Instant::now() < *until)
+            .map(|(notice, _)| notice.clone())
+    }
+
+    // Called with operation held. The failed recording may differ from the
+    // still-loaded native source, so advancement starts at its queue ID.
+    fn schedule_failed_track(&self, intent: u64, track: &QueueTrack) {
+        if self.play_intent.load(Ordering::SeqCst) != intent {
+            return;
+        }
+        let queue = self.queue.snapshot();
+        if !queue.items.iter().any(|item| item.id == track.id) {
+            return;
+        }
+        let mut next_override = self
+            .next_override
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if next_override.as_deref() == Some(track.id.as_str()) {
+            *next_override = None;
+        }
+        drop(next_override);
+        let _ = self.stop_locked();
+        let mode = *self
+            .mode
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut failed = self
+            .failed_tracks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.play_intent.load(Ordering::SeqCst) != intent {
+            return;
+        }
+        failed.ids.insert(track.id.clone());
+        let exhausted = failed_track_next_index(&queue, mode, &track.id, &failed.ids).is_none();
+        failed.notice = Some((
+            PlaybackSkipNotice {
+                title: track.title.clone(),
+                exhausted,
+            },
+            Instant::now() + Duration::from_secs(7),
+        ));
+        failed.pending = (!exhausted).then(|| {
+            (
+                intent,
+                track.id.clone(),
+                Instant::now() + FAILED_TRACK_SKIP_DELAY,
+            )
+        });
+    }
+
+    fn advance_after_failure(&self) {
+        let prepared = {
+            let _operation = self
+                .operation
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut failed = self
+                .failed_tracks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some((intent, id, due)) = failed.pending.as_ref() else {
+                return;
+            };
+            if Instant::now() < *due {
+                return;
+            }
+            let (intent, id) = (*intent, id.clone());
+            failed.pending = None;
+            if self.play_intent.load(Ordering::SeqCst) != intent {
+                return;
+            }
+            let queue = self.queue.snapshot();
+            let mode = *self
+                .mode
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(index) = failed_track_next_index(&queue, mode, &id, &failed.ids) else {
+                if let Some((notice, until)) = &mut failed.notice {
+                    notice.exhausted = true;
+                    *until = Instant::now() + Duration::from_secs(7);
+                }
+                return;
+            };
+            let Ok(track) = self.queue.select(index) else {
+                return;
+            };
+            failed.resolving = true;
+            (intent, track)
+        };
+        // Keep this intent across the chain. Manual playback/stop supersedes it;
+        // successfully loading a file does not reset the visited recordings.
+        let result = self.play_selected(prepared.0, prepared.1.clone(), PlaybackQuality::Auto);
+        let _operation = self
+            .operation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.play_intent.load(Ordering::SeqCst) == prepared.0 {
+            let mut failed = self
+                .failed_tracks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            failed.resolving = false;
+            if result.as_ref().is_err_and(|error| {
+                !song_cannot_play(error) && *error != PlaybackSessionError::Superseded
+            }) {
+                failed.notice = Some((
+                    PlaybackSkipNotice {
+                        title: prepared.1.title,
+                        exhausted: true,
+                    },
+                    Instant::now() + Duration::from_secs(7),
+                ));
+            }
+        }
+    }
+
     fn new_play_intent(&self) -> u64 {
+        let intent = self
+            .play_intent
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        *self
+            .failed_tracks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = FailedTracks::default();
         *self
             .resume_transport
             .lock()
@@ -1648,9 +1859,7 @@ impl PlaybackSession {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *retry = None;
-        self.play_intent
-            .fetch_add(1, Ordering::SeqCst)
-            .wrapping_add(1)
+        intent
     }
 }
 
@@ -1686,6 +1895,7 @@ fn auto_advance_loop(session: Weak<PlaybackSession>, stop: Arc<AtomicBool>) {
             return;
         };
         session.handle_native_events();
+        session.advance_after_failure();
         session.observe_shuffle_listening();
         let _ = session.advance_if_ended();
     }
@@ -1783,6 +1993,45 @@ impl PlaybackSession {
                         true,
                     );
                 }
+                NativePlayerEvent::Failed {
+                    generation,
+                    failure,
+                } if matches!(
+                    failure.code,
+                    PlayerFailureCode::Decoding
+                        | PlayerFailureCode::Unsupported
+                        | PlayerFailureCode::Unavailable
+                ) =>
+                {
+                    let _operation = self
+                        .operation
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let snapshot = self.playback.snapshot();
+                    let active = *self
+                        .active_source
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if snapshot.generation != generation {
+                        continue;
+                    }
+                    let Some(active) = active.filter(|active| {
+                        active.generation == generation
+                            && active.intent == self.play_intent.load(Ordering::SeqCst)
+                    }) else {
+                        continue;
+                    };
+                    let Some(track) = snapshot.current_track.as_ref().and_then(|current| {
+                        self.queue
+                            .snapshot()
+                            .items
+                            .into_iter()
+                            .find(|track| track.id == current.id)
+                    }) else {
+                        continue;
+                    };
+                    self.schedule_failed_track(active.intent, &track);
+                }
                 NativePlayerEvent::Opened { generation } => {
                     let _operation = self
                         .operation
@@ -1842,6 +2091,48 @@ fn current_index(snapshot: &PlaybackSessionSnapshot) -> Option<usize> {
                 .position(|item| item.id == track.id)
         })
         .or(snapshot.queue.selected_index)
+}
+
+fn failed_track_next_index(
+    queue: &QueueSnapshot,
+    mode: PlaybackMode,
+    id: &str,
+    failed: &HashSet<String>,
+) -> Option<usize> {
+    let current = queue.items.iter().position(|track| track.id == id)?;
+    let candidates: Vec<_> = (1..queue.items.len())
+        .filter_map(|offset| {
+            let index = current + offset;
+            if mode == PlaybackMode::Sequence && index >= queue.items.len() {
+                return None;
+            }
+            let index = index % queue.items.len();
+            (!failed.contains(&queue.items[index].id)).then_some(index)
+        })
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    // A failure overrides single-track repeat. Shuffle only chooses untried tracks.
+    let pick = if mode == PlaybackMode::Shuffle {
+        queue.generation as usize % candidates.len()
+    } else {
+        0
+    };
+    Some(candidates[pick])
+}
+
+fn song_cannot_play(error: &PlaybackSessionError) -> bool {
+    matches!(
+        error,
+        PlaybackSessionError::Playback(
+            PlaybackError::EntitlementDenied
+                | PlaybackError::Unavailable
+                | PlaybackError::LocalFileMissing
+                | PlaybackError::LocalCodecUnavailable
+                | PlaybackError::NativePlayerUnavailable
+        )
+    )
 }
 
 fn normalize_quality(quality: PlaybackQuality) -> PlaybackQuality {
@@ -1933,6 +2224,233 @@ mod tests {
 
     struct CountingProvider {
         requests: Arc<AtomicUsize>,
+    }
+
+    struct SelectiveProvider {
+        denied: HashSet<String>,
+        requests: Arc<AtomicUsize>,
+        queue: Arc<QueueService>,
+    }
+
+    impl ProviderRequestPort for SelectiveProvider {
+        fn request(&self, _request: ProviderRequest) -> Result<ProviderReply, ProviderError> {
+            self.requests.fetch_add(1, Ordering::SeqCst);
+            let queue = self.queue.snapshot();
+            let id = queue.items[queue.selected_index.unwrap()].id.as_str();
+            let global_failure = match id {
+                "network" => Some("network_unavailable"),
+                "authentication" => Some("authentication_required"),
+                "device" => Some("playback_device_limit"),
+                _ => None,
+            };
+            if let Some(code) = global_failure {
+                return Ok(ProviderReply::Failure {
+                    code: code.into(),
+                    retryable: false,
+                });
+            }
+            if self.denied.contains(id) {
+                return Ok(ProviderReply::Failure {
+                    code: "entitlement_denied".into(),
+                    retryable: false,
+                });
+            }
+            Ok(ProviderReply::Success {
+                result: serde_json::json!({"trackId":id,"quality":"320k","url":"https://isure.stream.qqmusic.qq.com/M800fixture.mp3?vkey=v","expiresInSeconds":7200}).as_object().unwrap().clone(),
+                warnings: vec![],
+            })
+        }
+    }
+
+    fn failure_session(denied: &[&str]) -> (TestSession, Arc<Mutex<VecDeque<NativePlayerEvent>>>) {
+        let root = std::env::temp_dir().join(format!("qqmusic-skip-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
+        queue
+            .replace(vec![
+                queue_track("one"),
+                queue_track("two"),
+                queue_track("three"),
+            ])
+            .unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let events = Arc::new(Mutex::new(VecDeque::new()));
+        let playback = Arc::new(PlaybackController::with_resolver(
+            Arc::new(SelectiveProvider {
+                denied: denied.iter().map(|id| (*id).to_owned()).collect(),
+                requests: requests.clone(),
+                queue: queue.clone(),
+            }),
+            Box::new(RecoveryPlayer {
+                snapshot: Mutex::new(PlayerSnapshot::idle()),
+                events: events.clone(),
+                seeks: Arc::new(Mutex::new(vec![])),
+            }),
+            Arc::new(FakeResolver),
+        ));
+        (
+            TestSession {
+                root,
+                session: PlaybackSession::new(queue, playback),
+                requests,
+            },
+            events,
+        )
+    }
+
+    fn run_pending_skip(session: &PlaybackSession) {
+        if let Some((_, _, due)) = session.failed_tracks.lock().unwrap().pending.as_mut() {
+            *due = Instant::now();
+        }
+        session.advance_after_failure();
+    }
+
+    #[test]
+    fn failed_selection_shows_notice_before_advancing_from_failed_id_not_old_source() {
+        let (test, _) = failure_session(&["two"]);
+        test.session.play_index(0, PlaybackQuality::Auto).unwrap();
+        assert!(test.session.play_index(1, PlaybackQuality::Auto).is_err());
+        assert_eq!(
+            test.session
+                .snapshot_update(None)
+                .skip_notice
+                .unwrap()
+                .title,
+            "Track two"
+        );
+        test.session.advance_after_failure();
+        assert_eq!(test.requests.load(Ordering::SeqCst), 2);
+        run_pending_skip(&test.session);
+        assert_eq!(
+            test.session.snapshot().player.current_track.unwrap().id,
+            "three"
+        );
+        assert_eq!(test.requests.load(Ordering::SeqCst), 3);
+        assert!(!test.session.skip_notice().unwrap().exhausted);
+    }
+
+    #[test]
+    fn consecutive_failures_try_each_recording_once_in_every_playback_mode() {
+        for mode in [
+            PlaybackMode::Sequence,
+            PlaybackMode::RepeatAll,
+            PlaybackMode::RepeatOne,
+            PlaybackMode::Shuffle,
+        ] {
+            let (test, _) = failure_session(&["one", "two", "three"]);
+            test.session.set_mode(mode).unwrap();
+            assert!(test.session.play_index(0, PlaybackQuality::Auto).is_err());
+            for _ in 0..6 {
+                run_pending_skip(&test.session);
+            }
+            assert_eq!(test.requests.load(Ordering::SeqCst), 3, "{mode:?}");
+            assert!(test.session.skip_notice().unwrap().exhausted);
+            assert_eq!(test.session.snapshot().player.state, PlayerState::Idle);
+        }
+    }
+
+    #[test]
+    fn repeat_one_skips_failed_track_and_successful_next_track_keeps_notice() {
+        let (test, _) = failure_session(&["one"]);
+        test.session.set_mode(PlaybackMode::RepeatOne).unwrap();
+        assert!(test.session.play_index(0, PlaybackQuality::Auto).is_err());
+        run_pending_skip(&test.session);
+        assert_eq!(
+            test.session.snapshot().player.current_track.unwrap().id,
+            "two"
+        );
+        assert_eq!(test.requests.load(Ordering::SeqCst), 2);
+        assert_eq!(test.session.skip_notice().unwrap().title, "Track one");
+    }
+
+    #[test]
+    fn explicit_actions_cancel_scheduled_failure_advancement() {
+        for action in ["pause", "stop", "replace", "play"] {
+            let (test, _) = failure_session(&["one"]);
+            assert!(test.session.play_index(0, PlaybackQuality::Auto).is_err());
+            match action {
+                "pause" => {
+                    let _ = test.session.pause();
+                }
+                "stop" => {
+                    let _ = test.session.stop();
+                }
+                "replace" => {
+                    test.session
+                        .replace_queue(vec![queue_track("three")])
+                        .unwrap();
+                }
+                _ => {
+                    test.session.play_index(2, PlaybackQuality::Auto).unwrap();
+                }
+            }
+            run_pending_skip(&test.session);
+            assert_eq!(
+                test.requests.load(Ordering::SeqCst),
+                if action == "play" { 2 } else { 1 }
+            );
+            assert!(test.session.skip_notice().is_none());
+        }
+    }
+
+    #[test]
+    fn superseded_failure_cannot_stop_or_skip_the_new_manual_selection() {
+        let (test, _) = failure_session(&[]);
+        test.session.play_index(0, PlaybackQuality::Auto).unwrap();
+        let previous_intent = test.session.play_intent.load(Ordering::SeqCst);
+        test.session.play_index(2, PlaybackQuality::Auto).unwrap();
+        {
+            let _operation = test.session.operation.lock().unwrap();
+            test.session
+                .schedule_failed_track(previous_intent, &queue_track("one"));
+        }
+        run_pending_skip(&test.session);
+        assert!(test.session.skip_notice().is_none());
+        assert_eq!(
+            test.session.snapshot().player.current_track.unwrap().id,
+            "three"
+        );
+        assert_eq!(test.requests.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn stale_native_failure_does_not_skip_current_track_but_decoding_failure_does() {
+        let (test, events) = failure_session(&[]);
+        test.session.play_index(0, PlaybackQuality::Auto).unwrap();
+        let generation = test.session.snapshot().player.generation;
+        for event_generation in [generation.wrapping_sub(1), generation] {
+            events.lock().unwrap().push_back(NativePlayerEvent::Failed {
+                generation: event_generation,
+                failure: crate::player::PlayerFailure::new(
+                    PlayerFailureCode::Decoding,
+                    event_generation,
+                ),
+            });
+            test.session.handle_native_events();
+            if event_generation != generation {
+                assert!(test.session.skip_notice().is_none());
+            }
+        }
+        assert_eq!(test.session.skip_notice().unwrap().title, "Track one");
+        run_pending_skip(&test.session);
+        assert_eq!(
+            test.session.snapshot().player.current_track.unwrap().id,
+            "two"
+        );
+    }
+
+    #[test]
+    fn global_network_authentication_and_device_failures_do_not_scan_the_queue() {
+        for id in ["network", "authentication", "device"] {
+            let (test, _) = failure_session(&[]);
+            test.session
+                .replace_queue(vec![queue_track(id), queue_track("two")])
+                .unwrap();
+            assert!(test.session.play_index(0, PlaybackQuality::Auto).is_err());
+            run_pending_skip(&test.session);
+            assert_eq!(test.requests.load(Ordering::SeqCst), 1);
+            assert!(test.session.skip_notice().is_none());
+        }
     }
 
     struct SuccessfulProvider {
@@ -2604,6 +3122,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         PlaybackSessionSnapshot {
+            skip_notice: None,
             actual_quality: None,
             lyric_offset_ms: 0,
             mode,
@@ -3170,16 +3689,16 @@ mod tests {
     }
 
     #[test]
-    fn failed_auto_advance_retries_transient_failures_up_to_limit() {
+    fn unavailable_auto_advance_stops_at_end_without_retrying_the_same_song() {
         let test = TestSession::ended();
-        // Attempt 1: immediate failure sets retry backoff
         assert_eq!(
             test.session.advance_if_ended(),
             Err(PlaybackSessionError::Playback(PlaybackError::Unavailable))
         );
-        // Immediate poll before backoff deadline returns Ok(None)
         assert_eq!(test.session.advance_if_ended(), Ok(None));
         assert_eq!(test.requests.load(Ordering::SeqCst), 1);
+        assert!(test.session.skip_notice().unwrap().exhausted);
+        assert!(test.session.auto_advance_retry.lock().unwrap().is_none());
     }
 
     #[test]
@@ -3385,15 +3904,16 @@ mod tests {
     }
 
     #[test]
-    fn manual_play_intent_clears_pending_auto_advance_retry() {
+    fn manual_stop_clears_failure_notice_and_pending_skip() {
         let test = TestSession::ended();
         assert_eq!(
             test.session.advance_if_ended(),
             Err(PlaybackSessionError::Playback(PlaybackError::Unavailable))
         );
-        assert!(test.session.auto_advance_retry.lock().unwrap().is_some());
+        assert!(test.session.skip_notice().is_some());
         let _ = test.session.stop();
         assert!(test.session.auto_advance_retry.lock().unwrap().is_none());
+        assert!(test.session.skip_notice().is_none());
     }
 
     #[test]
