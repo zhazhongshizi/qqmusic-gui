@@ -377,4 +377,19 @@ describe("播放队列抽屉", () => {
     expect(move).toHaveBeenCalledWith("fixture-large-31", 34);
     expect(view.container).toHaveTextContent("已将《长队列歌曲 31》移动到第 35 位");
   });
+
+  it("关闭抽屉时保留 180ms 退场过渡节点并立即对无障碍树隐藏", () => {
+    vi.useFakeTimers();
+    const view = render(<QueueDrawer onClose={vi.fn()} open />);
+    expect(screen.getByRole("dialog", { name: "播放队列" })).toBeInTheDocument();
+
+    view.rerender(<QueueDrawer onClose={vi.fn()} open={false} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(view.container.querySelector(".queue-drawer")).toHaveAttribute("data-closing", "true");
+    expect(view.container.querySelector(".queue-scrim")).toHaveAttribute("data-closing", "true");
+
+    act(() => vi.advanceTimersByTime(180));
+    expect(view.container.querySelector(".queue-drawer")).toBeNull();
+    expect(view.container.querySelector(".queue-scrim")).toBeNull();
+  });
 });

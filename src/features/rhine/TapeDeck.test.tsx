@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { getCurrentTrack, playerActions, resetPlayerFixture } from "../player/playerStore";
@@ -79,17 +79,32 @@ function renderLyrics(lyrics: LyricLine[], positionMs = 1500) {
   return onLyrics;
 }
 
-it("显示当前原文及对应翻译，保留展开完整歌词操作", () => {
-  const onLyrics = renderLyrics([
+it("显示当前原文及对应翻译，保留展开完整歌词操作，并在切行时重建文本节点触发动画", () => {
+  const lyrics = [
     { atMs: 1000, original: "どんな色だって", translation: "无论是什么颜色" },
     { atMs: 2000, original: "つくれるはずなんだよ", translation: "都应该能创造出来" },
-  ]);
+  ];
+  const onLyrics = renderLyrics(lyrics);
   const button = screen.getByRole("button", { name: "展开完整歌词" });
-  expect(button.querySelector("span")).toHaveTextContent("どんな色だって");
-  expect(button.querySelector("small")).toHaveTextContent("无论是什么颜色");
+  const firstSpan = button.querySelector("span");
+  const firstSmall = button.querySelector("small");
+  expect(firstSpan).toHaveTextContent("どんな色だって");
+  expect(firstSmall).toHaveTextContent("无论是什么颜色");
   expect(screen.queryByText("つくれるはずなんだよ")).not.toBeInTheDocument();
   fireEvent.click(button);
   expect(onLyrics).toHaveBeenCalledOnce();
+
+  const track = { id: "lyric-test", title: "测试歌曲", artist: "歌手", album: "专辑", durationMs: 10000 };
+  act(() => {
+    playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k", mode: "sequence",
+      queue: { generation: 1, selectedIndex: 0, items: [track] },
+      player: { state: "playing", generation: 1, currentTrack: track, positionMs: 2500, durationMs: 10000, volume: .5, muted: false, failure: null },
+    });
+  });
+  expect(button.querySelector("span")).toHaveTextContent("つくれるはずなんだよ");
+  expect(button.querySelector("span")).not.toBe(firstSpan);
+  expect(button.querySelector("small")).not.toBe(firstSmall);
 });
 
 it.each([undefined, "   "])("缺少翻译时只显示原文 (%s)", translation => {

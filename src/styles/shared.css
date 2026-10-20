@@ -559,7 +559,11 @@
     0 8px 24px -4px rgb(0 0 0 / 36%),
     0 0 54px -6px color-mix(in srgb, var(--cover-vibrant, var(--lichen)) calc(var(--cover-glow-intensity, 1) * 22%), transparent),
     0 20px 96px 12px color-mix(in srgb, var(--cover-primary, var(--canopy)) calc(var(--cover-glow-intensity, 1) * 16%), transparent);
-  transition: box-shadow 1.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 1.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stage[data-playing="false"] .stage__cover-column > .album-artwork {
+  transform: scale(0.982);
 }
 
 .album-artwork::after {
@@ -582,6 +586,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  animation: album-cover-reveal 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .album-artwork--compact {
@@ -600,6 +605,7 @@
 .stage__metadata {
   min-width: 0;
   margin-top: 18px;
+  animation: stage-metadata-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .stage__metadata h1 {
@@ -903,10 +909,25 @@
 }
 
 .lyrics-scroll__line {
+  position: relative;
   max-width: 660px;
   padding: 10px 0;
   cursor: default;
-  transition: color 300ms ease, opacity 300ms ease, transform 300ms ease;
+  transition: color 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms cubic-bezier(0.22, 1, 0.36, 1), transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.lyrics-scroll__line::before {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: -18px;
+  width: 2px;
+  content: "";
+  background: var(--lichen);
+  border-radius: 1px;
+  opacity: 0;
+  transform: scaleY(0.35);
+  transition: opacity 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lyrics-scroll__line--past {
@@ -932,14 +953,8 @@
 }
 
 .lyrics-scroll__line--active::before {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: -18px;
-  width: 2px;
-  content: "";
-  background: var(--lichen);
-  border-radius: 1px;
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .lyrics-scroll__original {
@@ -987,6 +1002,7 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   transform: translateX(-50%);
+  animation: lyrics-back-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
   transition: background 140ms ease, border-color 140ms ease;
 }
 
@@ -1293,6 +1309,11 @@ input[type="range"]::-moz-range-thumb {
   animation: fade-in 180ms ease both;
 }
 
+.queue-scrim[data-closing="true"] {
+  animation: fade-out 180ms ease both;
+  pointer-events: none;
+}
+
 .queue-drawer {
   position: fixed;
   z-index: 70;
@@ -1308,6 +1329,11 @@ input[type="range"]::-moz-range-thumb {
     #151b16;
   box-shadow: -28px 0 70px rgb(0 0 0 / 34%);
   animation: drawer-in 240ms cubic-bezier(.22, .75, .28, 1) both;
+}
+
+.queue-drawer[data-closing="true"] {
+  animation: drawer-out 180ms cubic-bezier(.4, 0, 1, 1) both;
+  pointer-events: none;
 }
 
 .queue-drawer__header {
@@ -2790,9 +2816,34 @@ body.queue-drag-active * {
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes drawer-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(28px); }
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes album-cover-reveal {
+  from { opacity: 0; transform: scale(1.015); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes stage-metadata-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lyrics-back-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 @keyframes loading-needle {
@@ -3256,11 +3307,22 @@ body.queue-drag-active * {
     transition: none;
   }
 
+  .lyrics-scroll__container {
+    scroll-behavior: auto;
+  }
+
   .app-shell,
   .top-bar,
   .stage__glow,
   .album-artwork,
   .album-artwork--compact,
+  .album-artwork__image,
+  .stage__metadata,
+  .lyrics-scroll__line,
+  .lyrics-scroll__line::before,
+  .lyrics-scroll__back-button,
+  .queue-drawer,
+  .queue-scrim,
   .player-bar,
   .player-bar::before,
   .player-bar__timeline {

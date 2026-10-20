@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { expect, it, vi } from "vitest";
 import { CardAppearance } from "./vendor/appearance";
 import { cloneDiscoveryCassette, disposeDiscoveryCassette } from "./vendor/discovery-cassette";
-import { DiscoveryRack } from "./vendor/discovery-rack";
+import { DiscoveryRack, DISCOVERY_EXTRACT_DURATION, DISCOVERY_RETURN_DURATION } from "./vendor/discovery-rack";
 import { SHELL } from "./vendor/cassette-shell-2d";
 import { archiveCameraTarget } from "./vendor/archive-camera-2d";
 
@@ -178,5 +178,38 @@ it("reuses prepared shells on re-entry while clearing interrupted inspection and
   for(let i=0;i<110;i++)rack.update(.016,1280,800,camera);
   expect(rack.motion.phase(loading)).toBe("waiting");expect(rack.motion.key).toBe("");
   expect(clarity.mock.calls.slice(-9).every(([,amount])=>amount===0)).toBe(true);
+ }finally{rack.dispose();getContext.mockRestore();}
+});
+
+it("smoothly extracts and returns a cassette over the extended duration while fading neighbour dimming",()=>{
+ const getContext=mockCanvas(),clarity=vi.fn();
+ const rack=new DiscoveryRack(()=>new THREE.Group(),clarity),camera=new THREE.PerspectiveCamera();
+ camera.position.set(0,90,100);camera.lookAt(0,0,0);rack.begin(camera,[]);
+ const entries=[{id:"a",kind:"song" as const,title:"歌曲 A",subtitle:"歌手"},{id:"b",kind:"song" as const,title:"歌曲 B",subtitle:"歌手"}];
+ const base={open:true,ready:true,instant:true,key:"smooth",entries,selected:null as string|null,hovered:null,scroll:0,top:166};
+ try {
+  rack.set(base);rack.update(0,1280,800,camera);
+  const first=rack.root.children[1] as THREE.Group,second=rack.root.children[2] as THREE.Group;
+  const secondPrint=second.children.find(c=>c instanceof THREE.Mesh&&c.name!=="discovery-title-on-top") as THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>;
+  const slotPos=first.position.clone();
+  rack.set({...base,instant:false,selected:"a"});
+  for(let i=0;i<5;i++)expect(rack.update(.04,1280,800,camera)).toBe(true);
+  expect(first.position.distanceTo(slotPos)).toBeGreaterThan(.1);
+  expect(secondPrint.material.color.r).toBeLessThan(1);
+  expect(secondPrint.material.color.r).toBeGreaterThan(.72);
+  let elapsed=.2;
+  while(elapsed<DISCOVERY_EXTRACT_DURATION+.08){rack.update(.04,1280,800,camera);elapsed+=.04;}
+  expect(rack.update(0,1280,800,camera)).toBe(false);
+  expect(secondPrint.material.color.r).toBeCloseTo(.72,3);
+  const extractedPos=first.position.clone();
+  rack.set({...base,instant:false,selected:null});
+  for(let i=0;i<5;i++)expect(rack.update(.04,1280,800,camera)).toBe(true);
+  expect(first.position.distanceTo(extractedPos)).toBeGreaterThan(.1);
+  expect(secondPrint.material.color.r).toBeGreaterThan(.72);
+  elapsed=.2;
+  while(elapsed<DISCOVERY_RETURN_DURATION+.08){rack.update(.04,1280,800,camera);elapsed+=.04;}
+  expect(rack.update(0,1280,800,camera)).toBe(false);
+  expect(first.position.distanceTo(slotPos)).toBeLessThan(.001);
+  expect(secondPrint.material.color.r).toBeCloseTo(1,3);
  }finally{rack.dispose();getContext.mockRestore();}
 });

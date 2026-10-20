@@ -114,3 +114,22 @@ it("supports empty/error recovery and Escape first returns the tape then exits",
  await userEvent.keyboard("{Escape}");expect(props.onClose).not.toHaveBeenCalled();await waitFor(()=>expect(tape).toHaveFocus());
  await userEvent.keyboard("{Escape}");expect(props.onClose).toHaveBeenCalledOnce();
 });
+
+it("keeps the dossier mounted with data-exiting during tape return and unmounts after 480ms",async()=>{
+ const {container}=render(<ArchiveDiscovery {...props}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"选择歌曲 曲目 1"}));
+ expect(screen.getByRole("dialog",{name:"选中磁带档案"})).toBeInTheDocument();
+ vi.useFakeTimers();
+ try {
+  fireEvent.click(button("收回磁带"));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  const exiting=container.querySelector(".discovery-rack-dossier");
+  expect(exiting).toHaveAttribute("data-exiting","true");
+  act(()=>vi.advanceTimersByTime(479));
+  expect(container.querySelector(".discovery-rack-dossier")).toHaveAttribute("data-exiting","true");
+  act(()=>vi.advanceTimersByTime(1));
+  expect(container.querySelector(".discovery-rack-dossier")).toBeNull();
+ } finally {
+  vi.useRealTimers();
+ }
+});

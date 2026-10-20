@@ -29,9 +29,10 @@
 .rhine-header button, .rhine-back, .rhine-pages button, .rhine-lyrics-toggle { background: transparent; border: 0; padding: 8px 3px; font-size: var(--rh-size-body); }
 .rhine-header button[aria-pressed="true"] { border-bottom-width: 3px; border-bottom-style: solid; border-bottom-color: var(--rh-accent); }
 .rhine-header .rhine-navigation { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid #93939345; border-radius: 8px; background: #e6e6e6f2; box-shadow: inset 0 1px #ffffffbd, 0 2px 8px #27272708; }
-.rhine-header .rhine-nav-button { position: relative; display: grid; grid-template-rows: 22px 12px; justify-items: center; align-content: center; gap: 4px; min-width: 44px; height: 50px; padding: 5px 8px; border: 0; border-radius: 4px; color: var(--rh-ink); background: transparent; }
+.rhine-header .rhine-nav-button { position: relative; display: grid; grid-template-rows: 22px 12px; justify-items: center; align-content: center; gap: 4px; min-width: 44px; height: 50px; padding: 5px 8px; border: 0; border-radius: 4px; color: var(--rh-ink); background: transparent; transition: min-width .18s cubic-bezier(.22,1,.36,1), background-color .14s; }
 .rhine-header .rhine-nav-button[aria-pressed="true"] { min-width: 56px; border: 0; }
-.rhine-nav-button[aria-pressed="true"]::after { content: ""; position: absolute; bottom: 0; left: 6px; right: 6px; height: 3px; background: var(--rh-accent); border-radius: 1px; }
+.rhine-nav-button::after { content: ""; position: absolute; bottom: 0; left: 6px; right: 6px; height: 3px; background: var(--rh-accent); border-radius: 1px; opacity: 0; transform: scaleX(.35); transition: opacity .18s cubic-bezier(.22,1,.36,1), transform .18s cubic-bezier(.22,1,.36,1); }
+.rhine-nav-button[aria-pressed="true"]::after { opacity: 1; transform: scaleX(1); }
 .rhine-header .rhine-nav-button:hover { background: #ffffff40; }
 .rhine-nav-label { font-size: var(--rh-size-caption); line-height: 12px; white-space: nowrap; }
 .rhine-nav-tooltip { position: absolute; top: calc(100% + 12px); left: 50%; z-index: 8; padding: 7px 10px; border: 1px solid #ffffff20; border-radius: 4px; background: #303030f2; box-shadow: 0 4px 12px #18181818; color: #f0f0f0; font-size: var(--rh-size-body); line-height: 1.4; white-space: nowrap; pointer-events: none; visibility: hidden; opacity: 0; transform: translate(-50%,-3px); transition: opacity .14s, transform .14s, visibility .14s; }
@@ -40,7 +41,7 @@
 @supports ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
   .rhine-header .rhine-navigation { background: linear-gradient(115deg,#eeeeeea6,#dedede91); backdrop-filter: blur(20px) saturate(.8); -webkit-backdrop-filter: blur(20px) saturate(.8); }
 }
-@media (prefers-reduced-motion: reduce) { .rhine-nav-tooltip { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rhine-nav-tooltip, .rhine-header .rhine-nav-button, .rhine-nav-button::after { transition: none; } }
 .rhine-workspace { position: relative; overflow: hidden; min-height: 0; }
 .rhine-scene { position: absolute; inset: 0; }
 .rhine-scene canvas { display: block; width: 100%; height: 100%; }
@@ -145,7 +146,7 @@
 
 .rhine-header select { font: var(--rh-size-body) inherit; padding: 5px; color: var(--rh-ink); background: var(--rh-surface-2); border: 1px solid #8f8f8f6b; }
 
-.rhine-settings-page { position: absolute; inset: 48px 28px 65px; z-index: 4; display: grid; grid-template-rows: auto minmax(0,1fr); gap: 12px; min-height: 0; padding: 13px 17px 16px; color: var(--rh-ink); }
+.rhine-settings-page { position: absolute; inset: 48px 28px 65px; z-index: 4; display: grid; grid-template-rows: auto minmax(0,1fr); gap: 12px; min-height: 0; padding: 13px 17px 16px; color: var(--rh-ink); animation: rhine-document-in .32s cubic-bezier(.22,1,.36,1) both; }
 .rhine-settings-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 27px; }
 .rhine-settings-page-heading .rhine-eyebrow { color: #67655f; }
 .rhine-settings-back { border: 0; padding: 6px 4px; color: #33322e; background: transparent; font-size: var(--rh-size-body); }
@@ -270,8 +271,9 @@
 .rhine-deck-rail > i { flex: 1; width: 1px; min-height: 30px; background: #93939366; }
 .rhine-deck-console { position: absolute; bottom: 25px; left: 50%; width: min(670px,70%); transform: translateX(-50%); animation: rhine-console-enter .9s .3s both; }
 .rhine-deck-lyric { display: grid; gap: 7px; margin: 0 auto 19px; text-align: center; width: 90%; padding: 0; border: 0; background: transparent; }
-.rhine-deck-lyric > span { font-size: 18px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rhine-deck-lyric > small { font-size: var(--rh-size-body); line-height: 1.4; color: #7b7b7b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rhine-deck-lyric > span { font-size: 18px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: rhine-lyric-in .26s cubic-bezier(.22,1,.36,1) both; }
+.rhine-deck-lyric > small { font-size: var(--rh-size-body); line-height: 1.4; color: #7b7b7b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: rhine-lyric-in .26s 25ms cubic-bezier(.22,1,.36,1) both; }
+@keyframes rhine-lyric-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .rhine-deck-hardware { position: relative; padding: 17px 25px 11px; background: linear-gradient(110deg,#f1f1f1,#e9e9e9 65%,#e4e4e4); border: 1px solid #afafaf; border-top-color: #fdfdfd; border-radius: 2px; box-shadow: 0 2px 0 #bdbdbd,0 13px 25px #34343412; pointer-events: auto; color: #3a3a3a; }
 .rhine-deck-hardware::before, .rhine-deck-hardware::after { content: ""; position: absolute; top: 11px; width: 4px; height: 4px; border: 1px solid #a4a4a4; background: linear-gradient(135deg,transparent 42%,#969696 43% 57%,transparent 58%); border-radius: 50%; }
 .rhine-deck-hardware::before { left: 9px; }.rhine-deck-hardware::after { right: 9px; }
@@ -358,14 +360,14 @@
 .rhine-workspace[data-deck="true"] .rhine-deck-lyric { margin-bottom: 10px; padding: 5px 12px; width: fit-content; max-width: 100%; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .rhine-workspace[data-deck="true"] .rhine-lyrics { z-index: 4; box-shadow: -20px 0 80px #45454522; }
 @keyframes rhine-deck-enter { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }
-@keyframes rhine-console-enter { from { opacity: 0; margin-bottom: -18px; } to { opacity: 1; margin-bottom: 0; } }
+@keyframes rhine-console-enter { from { opacity: 0; translate: 0 18px; } to { opacity: 1; translate: 0 0; } }
 @media (max-height: 720px) { .rhine-deck-console { bottom: 18px; } .rhine-deck-rail { bottom: 300px; } .rhine-deck-caption { top: 26%; } }
 @media (max-width: 1050px) { .rhine-deck-preview { right: 18px; top: 20%; width: 28%; padding: 9px; max-height: calc(80% - 280px); } .rhine-deck-preview li > button { padding: 8px 5px; } }
 @media (max-width: 1050px) { .rhine-deck-caption { left: 3%; width: 23%; } .rhine-deck-console { width: 70%; } .rhine-deck-controls { gap: 10px; } .rhine-deck-mode span { display: none; } }
-@media (prefers-reduced-motion: reduce) { .rhine-deck-caption, .rhine-deck-console, .rhine-deck-preview { animation: none; } }
-@media (prefers-reduced-motion: reduce) { .rhine-deck-preview { transition: none; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rhine-deck-caption, .rhine-deck-console, .rhine-deck-preview, .rhine-deck-lyric > span, .rhine-deck-lyric > small, .rhine-settings-page, .rhine-local-page { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .rhine-deck-preview { transition: none; transform: none; } .rhine-workspace[data-settings="true"] .rhine-scene { transition: none; } }
 
-.rhine-local-page { position: absolute; inset: 18px; overflow: auto; padding: 20px; background: #e8e9e5ed; color: #30332f; border: 1px solid #797f7466; z-index: 5; border-radius: 10px; }
+.rhine-local-page { position: absolute; inset: 18px; overflow: auto; padding: 20px; background: #e8e9e5ed; color: #30332f; border: 1px solid #797f7466; z-index: 5; border-radius: 10px; animation: rhine-document-in .32s cubic-bezier(.22,1,.36,1) both; }
 .rhine-local-page-actions { display: flex; justify-content: space-between; margin-bottom: 20px; }
 .rhine-local-page .catalog-pane { width: 100%; }
 .rhine-local-page .catalog-table { width: 100%; text-align: left; border-collapse: collapse; }

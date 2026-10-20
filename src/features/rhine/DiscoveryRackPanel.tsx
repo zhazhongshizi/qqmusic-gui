@@ -10,6 +10,7 @@ import { DISCOVERY_PAGE_SIZE, type DiscoveryState, type DiscoveryFrame } from ".
 import "./discovery-shelf.css";
 import "./discovery-rack.css";
 
+export const DISCOVERY_DOSSIER_EXIT_MS = 480;
 export type DiscoveryHandle = { frame: (frame: DiscoveryFrame) => void };
 type Props = { active: boolean; visible?: boolean; accountKey: string; onClose: () => void; onDeck?: () => void; motionDisabled?: boolean;
   onSceneChange?: (state: DiscoveryState) => void; ref?: Ref<DiscoveryHandle> };
@@ -67,6 +68,10 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
   const items=useMemo(()=>!page?[]:kind==="playlists"?(page as CatalogEntityPage).items.filter(e=>e.kind==="playlist").map(playlist=>({id:`playlist:${playlist.id}`,playlist,song:null})):
     (page as CatalogSongPage).items.map(song=>({id:`song:${song.id}`,song,playlist:null})),[page,kind]);
   const selected=items.find(i=>i.id===selectedId);
+  const [retained,setRetained]=useState<{item:NonNullable<typeof selected>;index:number}|null>(null);
+  const selectedIndex=items.findIndex(item=>item.id===selected?.id);
+  if(selected&&retained?.item!==selected)setRetained({item:selected,index:selectedIndex});
+  const dossier=selected?{item:selected,index:selectedIndex}:retained;
   const entries=useMemo(()=>items.map(item=>({id:item.id,kind:item.song?"song" as const:"playlist" as const,title:(item.song??item.playlist!).title,
     subtitle:item.song?item.song.artist:`${item.playlist!.songCount} 首歌曲`,coverCacheKey:(item.song??item.playlist!).coverCacheKey,
     duration:item.song?.durationMs?`${Math.floor(item.song.durationMs/60000)}:${String(Math.floor(item.song.durationMs/1000)%60).padStart(2,"0")}`:undefined})),[items]);
@@ -75,6 +80,13 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
   useEffect(()=>{if(active)onSceneChange?.(state);},[active,state,onSceneChange]);
   useLayoutEffect(()=>{if(!hidden&&scroller.current)scroller.current.scrollTop=scroll;},[hidden,scroll,active]);
   useEffect(()=>{if(selected&&active)dialog.current?.querySelector<HTMLButtonElement>("button")?.focus({preventScroll:true});},[selected?.id,active]);
+  useEffect(()=>{
+    if(selected||!retained)return;
+    const immediate=reduced||hidden||!active||window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if(immediate){setRetained(null);return;}
+    const timer=window.setTimeout(()=>setRetained(null),DISCOVERY_DOSSIER_EXIT_MS);
+    return()=>window.clearTimeout(timer);
+  },[selected,retained,reduced,hidden,active]);
   function close(){setSelected(null);setHovered(null);requestAnimationFrame(()=>trigger.current?.focus({preventScroll:true}));}
   async function play(){if(selected?.song&&await act(selected.song,"play"))onDeck?.();}
   async function all(){if(await actAll()&&kind==="radar")onDeck?.();}
@@ -97,16 +109,17 @@ function RecommendationRack({kind,accountKey,active,hidden,top,reduced,onOpen,on
       </div>
     </div>
     {(!page||error||!items.length)&&<div className="discovery-rack-state" data-loading={!page&&!error}>{error?<p role="alert">推荐暂时不可用，检查网络后可刷新重试。</p>:!page?<p role="status">正在读取推荐…</p>:<p>暂时没有推荐内容，稍后刷新试试。</p>}</div>}
-    {selected&&<aside ref={dialog} className="discovery-dossier discovery-rack-dossier" role="dialog" aria-modal="true" aria-label="选中磁带档案" onKeyDown={event=>{
+    {dossier&&<aside ref={dialog} className="discovery-dossier discovery-rack-dossier" role="dialog" aria-modal="true" aria-label="选中磁带档案"
+      data-exiting={!selected} inert={!selected} aria-hidden={!selected||undefined} onKeyDown={event=>{
       if(event.key!=="Tab")return;const buttons=[...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];const first=buttons[0],last=buttons.at(-1);
       if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
     }}><button className="discovery-close" aria-label="收回磁带" onClick={close}>收回磁带 ×</button>
-      <p className="rhine-eyebrow">{selected.song?"TRACK":"PLAYLIST"} / {String(items.findIndex(item=>item.id===selected.id)+1).padStart(2,"0")}</p><h2>{(selected.song??selected.playlist!).title}</h2>
-      {selected.song?<><dl><div><dt>歌手</dt><dd>{selected.song.artists.length?selected.song.artists.map((artist,index)=><Fragment key={`${artist.id}:${index}`}>{index>0&&" / "}{artist.id==="0"?artist.name:<button onClick={()=>onOpen({kind:"artist",...artist})}>{artist.name}</button>}</Fragment>):selected.song.artist}</dd></div>
-        <div><dt>专辑</dt><dd><AlbumLink track={selected.song} onOpen={onOpen}/></dd></div><div><dt>时长</dt><dd>{entries.find(e=>e.id===selected.id)?.duration??"时长未知"}</dd></div></dl>
+      <p className="rhine-eyebrow">{dossier.item.song?"TRACK":"PLAYLIST"} / {String(dossier.index+1).padStart(2,"0")}</p><h2>{(dossier.item.song??dossier.item.playlist!).title}</h2>
+      {dossier.item.song?<><dl><div><dt>歌手</dt><dd>{dossier.item.song.artists.length?dossier.item.song.artists.map((artist,index)=><Fragment key={`${artist.id}:${index}`}>{index>0&&" / "}{artist.id==="0"?artist.name:<button onClick={()=>onOpen({kind:"artist",...artist})}>{artist.name}</button>}</Fragment>):dossier.item.song.artist}</dd></div>
+        <div><dt>专辑</dt><dd><AlbumLink track={dossier.item.song} onOpen={onOpen}/></dd></div><div><dt>时长</dt><dd>{entries.find(e=>e.id===dossier.item.id)?.duration??"时长未知"}</dd></div></dl>
         <div className="discovery-dossier-actions"><button className="discovery-primary" disabled={busy||!active} onClick={()=>void play()}><Icon name="play" size={16}/>播放</button><div>
-          <button disabled={busy||!active} onClick={()=>void act(selected.song!,"next")}><Icon name="play-next" size={18}/>下一首播放</button><button aria-label="加入队列" disabled={busy||!active} onClick={()=>void act(selected.song!,"enqueue")}>＋ 加入队列</button></div></div></>:
-        <><p>{selected.playlist!.songCount} 首歌曲 · {selected.playlist!.listenCount.toLocaleString()} 次播放</p><p className="discovery-description">{selected.playlist!.description}</p><button className="discovery-primary" onClick={()=>onOpen(selected.playlist!)}>查看歌单 ↗</button></>}
+          <button disabled={busy||!active} onClick={()=>void act(dossier.item.song!,"next")}><Icon name="play-next" size={18}/>下一首播放</button><button aria-label="加入队列" disabled={busy||!active} onClick={()=>void act(dossier.item.song!,"enqueue")}>＋ 加入队列</button></div></div></>:
+        <><p>{dossier.item.playlist!.songCount} 首歌曲 · {dossier.item.playlist!.listenCount.toLocaleString()} 次播放</p><p className="discovery-description">{dossier.item.playlist!.description}</p><button className="discovery-primary" onClick={()=>onOpen(dossier.item.playlist!)}>查看歌单 ↗</button></>}
       <p className="discovery-notice" role="status">{notice}</p>
     </aside>}
     <footer className="discovery-rack-footer">{!selected&&notice&&<p className="discovery-bulk-notice" role="status">{notice}</p>}{!!page?.warningCount&&<span>部分内容暂时不可用，已显示可用推荐。</span>}{page&&(kind!=="guess"||page.hasMore||pageNumber>1)&&<nav className="discovery-pages" aria-label="推荐分页">

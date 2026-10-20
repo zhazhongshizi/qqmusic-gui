@@ -6,14 +6,17 @@ import { disposeDiscoveryCassette } from "./discovery-cassette";
 import { drawCassetteCover, drawCassetteLabel } from "./cassette-print";
 import { archiveCameraTarget } from "./archive-camera-2d";
 import { COLUMN_SPACING, ROW_SPACING } from "./archive-loop";
-import { DiscoveryMotion, DISCOVERY_DURATION, DISCOVERY_SINK_DEPTH, discoverySinkScale, discoveryRetreat, discoveryEase, discoveryLayout, discoverySlots, drawDiscoveryFace, drawDiscoveryTop, type DiscoveryState, type DiscoveryFrame, type DiscoveryEntry } from "./discovery-layout";
+import { DiscoveryMotion, DISCOVERY_DURATION, DISCOVERY_SINK_DEPTH, discoverySinkScale, discoveryRetreat, discoveryLayout, discoverySlots, drawDiscoveryFace, drawDiscoveryTop, smootherstep, type DiscoveryState, type DiscoveryFrame, type DiscoveryEntry } from "./discovery-layout";
 
 type Print = THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>;
 type Inspection = { group: THREE.Group; cover: HTMLCanvasElement; label: HTMLCanvasElement; coverPrint: Print; labelPrint: Print };
 type Tape = { group: THREE.Group; shell: THREE.Group | null; print: Print; topPrint: Print; top: HTMLCanvasElement; topTexture: THREE.CanvasTexture; face: HTMLCanvasElement; texture: THREE.CanvasTexture; id: string; lift: number; extraction: number; selected?: boolean; inspection?: Inspection };
 export type DiscoverySource = { position: THREE.Vector3; rotation?: THREE.Euler; flattenedRotation?: THREE.Euler; scale?: THREE.Vector3; texture?: HTMLCanvasElement };
+export const DISCOVERY_EXTRACT_DURATION = .76;
+export const DISCOVERY_RETURN_DURATION = .68;
 const mix = THREE.MathUtils.lerp;
-const settle = (a: number,b: number,dt: number) => Math.abs(a-b)<.001?b:mix(a,b,1-Math.exp(-dt*14));
+const advance = (n: number, target: number, amount: number) => n + Math.sign(target - n) * Math.min(Math.abs(target - n), amount);
+const settle = (a: number,b: number,dt: number,rate = 10) => Math.abs(a-b)<.001?b:mix(a,b,1-Math.exp(-dt*rate));
 
 /** Grid-normalised horizontal distance avoids choosing a long, compressed row. */
 export const discoveryClusterDistance = (x:number,z:number) => Math.hypot(x/COLUMN_SPACING,z/ROW_SPACING);
@@ -304,21 +307,27 @@ export class DiscoveryRack {
     let animating=phase!=="ready"&&phase!=="closed"&&phase!=="waiting";
     const rects:DiscoveryFrame["rects"]=[];
     for(let i=0;i<this.tapes.length;i++) {
-      const tape=this.tapes[i],cell=layout.cell(i),blank=this.displayed[i].kind==="blank",selected=!blank&&state.selected===tape.id;
+      const tape=this.tapes[i],blank=this.displayed[i].kind==="blank",selected=!blank&&state.selected===tape.id;
       if(tape.selected!==selected) {tape.selected=selected;drawDiscoveryFace(tape.face,this.displayed[i],this.covers.get(tape.id),selected);tape.texture.needsUpdate=true;drawDiscoveryTop(tape.top,this.displayed[i],selected);tape.topTexture.needsUpdate=true;}
-      const lift=!blank&&state.hovered===tape.id&&!state.selected&&!state.reduced ? .16 : 0;
+      const lift=!blank&&state.hovered===tape.id&&!state.selected&&!state.reduced ? .18 : 0;
       tape.lift=state.reduced?0:settle(tape.lift,lift,dt);
-      const previousExtraction=tape.extraction;
-      tape.extraction=state.reduced?Number(selected):settle(tape.extraction,Number(selected),dt);
+      const previousExtraction=tape.extraction,targetExtraction=Number(selected);
+      const extractionDuration=selected?DISCOVERY_EXTRACT_DURATION:DISCOVERY_RETURN_DURATION;
+      tape.extraction=state.reduced?targetExtraction:advance(tape.extraction,targetExtraction,Math.min(dt,.05)/extractionDuration);
       if(selected&&!tape.inspection)this.createInspection(tape,this.displayed[i]);
       if(!selected&&tape.extraction===0)this.clearInspection(tape);
-      if(tape.shell&&previousExtraction!==tape.extraction)this.setClarity?.(tape.shell,tape.extraction);
-      animating ||= tape.lift!==lift||tape.extraction!==Number(selected);
+      if(tape.shell&&previousExtraction!==tape.extraction)this.setClarity?.(tape.shell,smootherstep((tape.extraction-.1)/.82));
+      animating ||= tape.lift!==lift||tape.extraction!==targetExtraction;
+    }
+    const maxExtraction=Math.max(0,...this.tapes.map(t=>t.extraction));
+    for(let i=0;i<this.tapes.length;i++) {
+      const tape=this.tapes[i],cell=layout.cell(i),blank=this.displayed[i].kind==="blank",selected=!blank&&state.selected===tape.id;
       const end=world(cell.x+layout.tapeWidth/2,cell.y+layout.tapeHeight-state.scroll,-(layout.rows-1-cell.row)*.8);
       const s=this.motion.tapeSpread(i,this.tapes.length);
-      const pose=discoveryEase((tape.extraction-.1)/.9)*s,clearance=discoveryEase(tape.extraction/.35)*s;
-      end.lerp(inspectionPosition,pose).addScaledVector(depth,(clearance-pose)*10);
-      end.y+=tape.lift;
+      const pose=smootherstep((tape.extraction-.08)/.92)*s,clearance=smootherstep(tape.extraction/.44)*s;
+      const glideArc=Math.sin(pose*Math.PI)*s;
+      end.lerp(inspectionPosition,pose).addScaledVector(depth,(clearance-pose)*10.5);
+      end.y+=tape.lift+glideArc*.38;
       const source=this.origins[i];
       const origin=source?.position.clone()??new THREE.Vector3((i%5-2)*5.4,-4.6,(Math.floor(i/5)-4)*.7);
       origin.y=-4.6;
@@ -330,8 +339,9 @@ export class DiscoveryRack {
       tape.group.scale.copy(source?.scale??new THREE.Vector3(1,1,1)).lerp(new THREE.Vector3(endScale,endScale,endScale),s);
       tape.group.visible=this.motion.handoff;
       const mat=tape.print.material;
-      mat.color.setScalar(state.selected && !selected ? .72 : .94+.06*this.motion.labels);
-      const artwork=discoveryEase((tape.extraction-.18)/.64);
+      const focusDim=selected?0:smootherstep(maxExtraction);
+      mat.color.setScalar(mix(.94+.06*this.motion.labels,.72,focusDim));
+      const artwork=smootherstep((tape.extraction-.16)/.72);
       const labelOpacity=this.motion.labels*this.motion.contentOpacity;
       mat.opacity=blank?0:labelOpacity*(1-artwork);
       tape.topPrint.material.opacity=blank?0:labelOpacity*(1-artwork);

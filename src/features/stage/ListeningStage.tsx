@@ -22,6 +22,7 @@ import { SongArtistLinks } from "../artist/SongArtistLinks";
 const selectNativeMode = (snapshot: PlayerSnapshot) => snapshot.nativeMode;
 const selectPosition = (snapshot: PlayerSnapshot) => snapshot.positionMs;
 const selectRequestedQuality = (snapshot: PlayerSnapshot) => snapshot.requestedQuality;
+const selectStagePlaying = (snapshot: PlayerSnapshot) => snapshot.isPlaying && !snapshot.playbackError;
 
 export function lyricIndexAt(positionMs: number, timings: readonly { atMs: number }[]) {
   let index = 0;
@@ -67,6 +68,7 @@ export function ListeningStage({
   const track = usePlayerSelector(getCurrentTrack);
   const nativeMode = usePlayerSelector(selectNativeMode);
   const requestedQuality = usePlayerSelector(selectRequestedQuality);
+  const isPlaying = usePlayerSelector(selectStagePlaying);
 
   if (!track) {
     return (
@@ -82,7 +84,7 @@ export function ListeningStage({
   const localFormat = localMusicFormatFromId(track.id);
 
   return (
-    <main className="stage" id="main-content">
+    <main className="stage" data-playing={isPlaying} id="main-content">
       <div
         aria-hidden="true"
         className="stage__ambient"
@@ -102,7 +104,7 @@ export function ListeningStage({
           <span>{nativeMode ? "NATIVE SESSION" : "SESSION 01"}</span>
         </div>
         <AlbumArtwork track={track} />
-        <div className="stage__metadata">
+        <div key={track.id} className="stage__metadata">
           <p className="stage__album">{track.album}</p>
           <h1>{track.title}</h1>
           <p><SongArtistLinks track={track} /></p>

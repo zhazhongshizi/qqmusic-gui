@@ -36,19 +36,28 @@ export function ScrollingLyrics({ lyrics, activeIndex }: ScrollingLyricsProps) {
 
   useEffect(() => {
     if (userScrolling) return;
-    if (!activeRef.current || !containerRef.current) return;
+    const active = activeRef.current;
+    const container = containerRef.current;
+    if (!active || !container) return;
     if (activeIndex === lastActiveIndex.current) return;
     lastActiveIndex.current = activeIndex;
 
+    const reducedMotion = typeof window !== "undefined"
+      && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     programmaticScroll.current = true;
-    if (typeof activeRef.current.scrollIntoView === "function") {
-      activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (typeof active.scrollIntoView === "function") {
+      active.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "center" });
     }
 
-    const timer = window.setTimeout(() => {
+    const releaseProgrammaticLock = () => {
       programmaticScroll.current = false;
-    }, 600);
-    return () => window.clearTimeout(timer);
+    };
+    container.addEventListener("scrollend", releaseProgrammaticLock, { once: true });
+    const timer = window.setTimeout(releaseProgrammaticLock, 600);
+    return () => {
+      container.removeEventListener("scrollend", releaseProgrammaticLock);
+      window.clearTimeout(timer);
+    };
   }, [activeIndex, userScrolling]);
 
   const handleScroll = useCallback(() => {

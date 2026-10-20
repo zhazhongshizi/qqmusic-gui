@@ -65,6 +65,7 @@ export function AlbumArtwork({ track, compact = false }: AlbumArtworkProps) {
     >
       {coverUrl ? (
         <img
+          key={coverUrl}
           alt={`${track.title}专辑封面`}
           className="album-artwork__image"
           onError={() => setCoverUrl(null)}

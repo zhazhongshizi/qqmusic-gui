@@ -41,7 +41,8 @@ function DeckLyric({ onOpen }: { onOpen: () => void }) {
   const lines = track?.lyrics ?? [];
   const line = lines[index];
   if (!line?.original.trim()) return null;
-  return <button className="rhine-deck-lyric" onClick={onOpen} aria-label="展开完整歌词"><span>{line.original}</span>{line.translation?.trim() && <small>{line.translation}</small>}</button>;
+  const lineKey = `${track?.id ?? ""}:${index}`;
+  return <button className="rhine-deck-lyric" onClick={onOpen} aria-label="展开完整歌词"><span key={lineKey}>{line.original}</span>{line.translation?.trim() && <small key={`${lineKey}:tr`}>{line.translation}</small>}</button>;
 }
 
 function VolumeDial() {

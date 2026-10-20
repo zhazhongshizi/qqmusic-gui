@@ -42,6 +42,7 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [rhinePage, setRhinePage] = useState(1);
+  const [rendered, setRendered] = useState(open);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const queueListRef = useRef<HTMLOListElement>(null);
@@ -153,7 +154,23 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
     }
   }
 
-  if (!open) return null;
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      return;
+    }
+    if (!rendered) return;
+    if (presentation !== "drawer" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setRendered(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setRendered(false), 180);
+    return () => window.clearTimeout(timer);
+  }, [open, presentation, rendered]);
+
+  const reducedMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const closing = !open && rendered && presentation === "drawer" && !reducedMotion;
+  if (!open && !closing) return null;
 
   const queueList = queue.length === 0 ? (
     <div className="queue-list__empty" role="status">
@@ -308,12 +325,15 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
 
   return (
     <>
-      <div aria-hidden="true" className="queue-scrim" onClick={onClose} />
+      <div aria-hidden="true" className="queue-scrim" data-closing={closing} onClick={onClose} />
       <section
+        aria-hidden={closing || undefined}
         aria-labelledby="player-queue-title"
         aria-modal="true"
         className="queue-drawer"
+        data-closing={closing}
         id="player-queue-dialog"
+        inert={closing}
         onKeyDown={onDialogKeyDown}
         ref={dialogRef}
         role="dialog"
