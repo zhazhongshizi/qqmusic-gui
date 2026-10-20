@@ -2465,6 +2465,7 @@ body.queue-drag-active * {
 
 .playlist-picker__option {
   display: flex;
+  flex: 0 0 40px;
   min-height: 40px;
   box-sizing: border-box;
   align-items: center;
@@ -2504,8 +2505,93 @@ body.queue-drag-active * {
   opacity: 1;
 }
 
+/* The menu is portalled to body: carry the variant explicitly instead of
+   relying on the Rhine shell's inherited palette. Default callers keep their theme. */
+.playlist-picker[data-variant="rhine"],
+.playlist-picker__menu[data-variant="rhine"] {
+  gap: 0;
+  color-scheme: light;
+  font: 12px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  letter-spacing: normal;
+}
+
+.playlist-picker[data-variant="rhine"] .playlist-picker__trigger {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #7d7a7259;
+  border-radius: 2px;
+  background: #e2e0db;
+  color: #45433e;
+  font: inherit;
+}
+
+.playlist-picker[data-variant="rhine"] .playlist-picker__trigger:hover:not(:disabled),
+.playlist-picker[data-variant="rhine"] .playlist-picker__trigger[aria-expanded="true"] {
+  border-color: #94521f;
+  background: #ecebe7;
+}
+
+.playlist-picker[data-variant="rhine"] .playlist-picker__trigger:focus-visible,
+.playlist-picker__menu[data-variant="rhine"]:focus-visible {
+  outline: 1px solid #94521f;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.playlist-picker[data-variant="rhine"] .playlist-picker__trigger > .icon {
+  color: #94521f;
+  transition: transform 160ms ease;
+}
+
+.playlist-picker[data-variant="rhine"] .playlist-picker__trigger[aria-expanded="true"] > .icon {
+  transform: rotate(180deg);
+}
+
+.playlist-picker__menu[data-variant="rhine"] {
+  border-color: #7d7a7259;
+  background: #ecebe7;
+  box-shadow: 0 8px 24px #30303026;
+  scrollbar-width: thin;
+  scrollbar-color: #9b978e #e2e0db;
+}
+
+.playlist-picker__menu[data-variant="rhine"]::-webkit-scrollbar { width: 6px; }
+.playlist-picker__menu[data-variant="rhine"]::-webkit-scrollbar-track { background: #e2e0db; }
+.playlist-picker__menu[data-variant="rhine"]::-webkit-scrollbar-thumb { background: #9b978e; border-radius: 3px; }
+.playlist-picker__menu[data-variant="rhine"]::-webkit-scrollbar-button { display: none; }
+
+.playlist-picker__menu[data-variant="rhine"] .playlist-picker__option {
+  position: relative;
+  padding: 0 12px;
+  color: #45433e;
+  font-weight: 400;
+}
+
+.playlist-picker__menu[data-variant="rhine"] .playlist-picker__option:is(:hover, :focus-visible, [data-active="true"]) {
+  background: #dedbd4;
+  color: #1f1f1d;
+}
+
+.playlist-picker__menu[data-variant="rhine"] .playlist-picker__option[aria-selected="true"] {
+  background: #b96e2d12;
+  color: #94521f;
+}
+
+.playlist-picker__menu[data-variant="rhine"] .playlist-picker__option[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: #b96e2d;
+}
+
+.playlist-picker__menu[data-variant="rhine"] .playlist-picker__check { color: #94521f; }
+
 @media (prefers-reduced-motion: reduce) {
-  .playlist-picker__trigger {
+  .playlist-picker__trigger,
+  .playlist-picker[data-variant="rhine"] .playlist-picker__trigger > .icon {
     transition: none;
   }
 }

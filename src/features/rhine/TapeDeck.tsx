@@ -4,6 +4,7 @@ import { PlaybackNotice } from "../player/PlaybackNotice";
 import { Icon } from "../../components/Icon";
 import { DeckCaption } from "./DeckCaption";
 import { DeckOutroPreview } from "./DeckOutroPreview";
+import { DeckPlaylistAction } from "./DeckPlaylistAction";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import { PlaybackQualitySelector } from "../player/PlaybackQualitySelector";
 import { MvLyricOffsetControl } from "../player/MvPlaybackSettings";
@@ -73,7 +74,7 @@ function VolumeDial() {
   </div>;
 }
 
-export function TapeDeck({ playlistTitle, onBack, onLyrics, onQueue }: { playlistTitle?: string; onBack: () => void; onLyrics: () => void; onQueue: () => void }) {
+export function TapeDeck({ playlistTitle, accountKey, authenticated = true, onBack, onLyrics, onQueue }: { playlistTitle?: string; accountKey?: string; authenticated?: boolean; onBack: () => void; onLyrics: () => void; onQueue: () => void }) {
   const track = usePlayerSelector(getCurrentTrack);
   const playing = usePlayerSelector(s => s.isPlaying);
   const error = usePlayerSelector(s => s.playbackError);
@@ -111,7 +112,10 @@ export function TapeDeck({ playlistTitle, onBack, onLyrics, onQueue }: { playlis
               ? <span>本地文件</span>
               : <PlaybackQualitySelector key={track.id} quality={requestedQuality} variant="rhine" />)}
           </div>
-          <button onClick={onQueue}>播放队列 / {String(queueLength).padStart(2, "0")} ↗</button>
+          <div className="rhine-deck-foot-actions">
+            <DeckPlaylistAction key={accountKey} track={track} authenticated={authenticated} />
+            <button onClick={onQueue}>播放队列 / {String(queueLength).padStart(2, "0")} ↗</button>
+          </div>
         </div>
         <MvLyricOffsetControl />
       </div>

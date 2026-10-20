@@ -4,11 +4,11 @@ import type { CatalogSong } from "../../contracts/catalog";
 import type { QueueTrack } from "../../contracts/queue";
 import { ArchiveDiscovery } from "./ArchiveDiscovery";
 
-const mocks = vi.hoisted(() => ({ songs: vi.fn(), replace: vi.fn(), append: vi.fn(), hydrate: vi.fn(), play: vi.fn() }));
+const mocks = vi.hoisted(() => ({ songs: vi.fn(), start: vi.fn(), hydrateSession: vi.fn(), replace: vi.fn(), append: vi.fn(), hydrate: vi.fn(), play: vi.fn() }));
 vi.mock("../../backend/catalogDiscoveryAdapter", () => ({ getRecommendedSongs: mocks.songs, getRecommendedPlaylists: vi.fn() }));
-vi.mock("../../backend/nativeQueueAdapter", () => ({ nativeQueueReplace: mocks.replace, nativeQueueEnqueueMany: mocks.append }));
+vi.mock("../../backend/nativeQueueAdapter", () => ({ nativeStartRadar: mocks.start, nativeQueueReplace: mocks.replace, nativeQueueEnqueueMany: mocks.append }));
 vi.mock("../../backend/playbackTransport", () => ({ playbackSessionIdentity: () => "local" }));
-vi.mock("../player/playerStore", () => ({ playerActions: { hydrateNative: mocks.hydrate, playTrack: mocks.play } }));
+vi.mock("../player/playerStore", () => ({ playerActions: { hydrateNative: mocks.hydrate, hydrateNativeSession: mocks.hydrateSession, playTrack: mocks.play } }));
 vi.mock("../catalog/CatalogDetails", () => ({ CatalogDetails: () => null, AlbumLink: () => null }));
 
 const songs: CatalogSong[] = Array.from({ length: 20 }, (_, index) => ({
@@ -29,6 +29,8 @@ beforeEach(() => {
   mocks.replace.mockImplementation(async (items: QueueTrack[]) => { order.push("replace"); queue = items; return snapshot(); });
   mocks.hydrate.mockImplementation(async () => { order.push("hydrate"); });
   mocks.play.mockImplementation(async () => { order.push("play"); return true; });
+  mocks.start.mockImplementation(async () => { order.push("radar"); queue = songs.slice(0, 10); return { queue: snapshot() }; });
+  mocks.hydrateSession.mockImplementation(async () => { order.push("hydrate-session"); });
 });
 afterEach(cleanup);
 async function openRadar() {
@@ -53,57 +55,55 @@ it("appends all guess recommendations across visual pages without clearing or pl
   expect(props.onDeck).not.toHaveBeenCalled();
 });
 
-it("replaces the old queue with all radar pages in order, deduplicates, then plays first and navigates", async () => {
+it("starts the native radar session without exhaustively reading visual pages", async () => {
   render(<ArchiveDiscovery {...props}/>);
   await openRadar();
-  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
-  await screen.findByRole("button", { name: "选择歌曲 推荐 10" });
   fireEvent.click(screen.getByRole("button", { name: "播放雷达推荐" }));
   await waitFor(() => expect(props.onDeck).toHaveBeenCalledOnce());
-  expect(queue.map(song => song.id)).toEqual(songs.map(song => song.id));
-  expect(order).toEqual(["replace", "hydrate", "play"]);
-  expect(mocks.replace).toHaveBeenCalledOnce();
-  expect(mocks.play).toHaveBeenCalledWith("song-1");
+  expect(queue.map(song => song.id)).toEqual(songs.slice(0, 10).map(song => song.id));
+  expect(order).toEqual(["radar", "hydrate-session"]);
+  expect(mocks.start).toHaveBeenCalledOnce();
+  expect(mocks.play).not.toHaveBeenCalled();
   expect(mocks.append).not.toHaveBeenCalled();
-  expect(mocks.songs.mock.calls.filter(call => call[0] === "radar")).toHaveLength(2);
+  expect(mocks.songs.mock.calls.filter(call => call[0] === "radar")).toHaveLength(1);
 });
 
-it("keeps the old queue when a remaining radar page fails", async () => {
+it("reports a failed native start without navigating or replaying the request", async () => {
   render(<ArchiveDiscovery {...props}/>);
   const button = await openRadar();
-  mocks.songs.mockRejectedValueOnce(new Error("offline"));
+  mocks.start.mockRejectedValueOnce(new Error("offline"));
   fireEvent.click(button);
-  await screen.findByText("读取全部推荐失败，播放列表未改动，请重试");
+  await screen.findByText("雷达播放未能启动，请检查播放器后重试");
   expect(queue).toEqual([previous]);
   expect(mocks.replace).not.toHaveBeenCalled();
   expect(mocks.play).not.toHaveBeenCalled();
   expect(props.onDeck).not.toHaveBeenCalled();
 });
 
-it.each(["leave", "account"])("ignores repeated clicks and cancels before queue replacement on %s", async change => {
+it.each(["leave", "account"])("ignores repeated clicks and stale native results after %s", async change => {
   const view = render(<ArchiveDiscovery {...props}/>);
   const button = await openRadar();
   let finish!: (value: unknown) => void;
-  mocks.songs.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  mocks.start.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   fireEvent.click(button); fireEvent.click(button);
   await waitFor(() => expect(finish).toBeTypeOf("function"));
   expect(button).toBeDisabled();
   expect(screen.getByRole("button", { name: "刷新推荐" })).toBeDisabled();
   view.rerender(<ArchiveDiscovery {...props} active={change !== "leave"} accountKey={change === "account" ? "authenticated:b" : props.accountKey}/>);
-  const generation = mocks.songs.mock.calls.find(call => call[0] === "radar" && call[2] === 2)![1];
-  await act(async () => finish({ generation, page: 2, hasMore: false, warningCount: 0, items: songs.slice(10) }));
+  await act(async () => finish({ queue: snapshot() }));
   expect(queue).toEqual([previous]);
   expect(mocks.replace).not.toHaveBeenCalled();
   expect(props.onDeck).not.toHaveBeenCalled();
+  expect(mocks.hydrateSession).not.toHaveBeenCalled();
 });
 
 it("reports playback failure after queue replacement and stays on the discovery page", async () => {
   render(<ArchiveDiscovery {...props}/>);
   const button = await openRadar();
-  mocks.play.mockResolvedValueOnce(false);
+  mocks.start.mockImplementationOnce(async () => { queue = songs.slice(0, 10); throw new Error("playback failed"); });
   fireEvent.click(button);
-  await screen.findByText("已替换播放列表，但播放失败，请在播放器中重试");
-  expect(queue.map(song => song.id)).toEqual(songs.map(song => song.id));
+  await screen.findByText("雷达播放未能启动，请检查播放器后重试");
+  expect(queue.map(song => song.id)).toEqual(songs.slice(0, 10).map(song => song.id));
   expect(props.onDeck).not.toHaveBeenCalled();
 });
 

@@ -28,6 +28,7 @@ describe("PlaylistPicker", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(trigger).toHaveTextContent("夜航精选");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger.closest(".playlist-picker")).toHaveAttribute("data-variant", "default");
   });
 
   it("支持鼠标打开、选择、外部关闭并恢复触发器焦点", async () => {
@@ -99,5 +100,54 @@ describe("PlaylistPicker", () => {
     expect(listbox).toHaveAttribute("data-scrollable", "true");
     expect(listbox).toHaveStyle({ maxHeight: "240px", width: "150px" });
     expect(view.container).toBeInTheDocument();
+  });
+
+  it("莱茵主题随菜单传递到 body，切回普通主题不会残留", async () => {
+    const user = userEvent.setup();
+    const props = { label: "目标歌单", options: OPTIONS, value: "one", onChange: vi.fn() };
+    const view = render(<PlaylistPicker {...props} variant="rhine" />);
+    const trigger = screen.getByRole("combobox");
+    await user.click(trigger);
+    const menu = screen.getByRole("listbox");
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu).toHaveAttribute("data-variant", "rhine");
+    expect(trigger.closest(".playlist-picker")).toHaveAttribute("data-variant", "rhine");
+    view.rerender(<PlaylistPicker {...props} />);
+    expect(menu).toHaveAttribute("data-variant", "default");
+    expect(trigger.closest(".playlist-picker")).toHaveAttribute("data-variant", "default");
+  });
+
+  it("关闭时可用方向键打开，Tab 收起菜单并移动焦点", async () => {
+    const user = userEvent.setup();
+    render(<><PlaylistPicker label="目标歌单" options={OPTIONS} value="one" onChange={vi.fn()} /><button>确认添加</button></>);
+    screen.getByRole("combobox").focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.tab();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认添加" })).toHaveFocus();
+  });
+
+  it("莱茵长列表限制高度，窄屏菜单不会溢出视口", async () => {
+    const user = userEvent.setup();
+    const oldWidth = window.innerWidth;
+    const oldHeight = window.innerHeight;
+    try {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+      render(<PlaylistPicker variant="rhine" label="目标歌单" options={Array.from({ length: 20 }, (_, index) => ({ id: `${index}`, title: `歌单 ${index}` }))} value="19" onChange={vi.fn()} />);
+      const trigger = screen.getByRole("combobox");
+      vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+        top: 450, bottom: 490, left: 16, right: 416, width: 400, height: 40,
+        x: 16, y: 450, toJSON: () => ({}),
+      });
+      await user.click(trigger);
+      expect(screen.getByRole("listbox")).toHaveStyle({ width: "304px", left: "8px", maxHeight: "250px" });
+      expect(screen.getByRole("listbox")).toHaveAttribute("data-placement", "top");
+      expect(screen.getByRole("option", { name: "歌单 19" })).toHaveAttribute("data-active", "true");
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: oldWidth });
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: oldHeight });
+    }
   });
 });

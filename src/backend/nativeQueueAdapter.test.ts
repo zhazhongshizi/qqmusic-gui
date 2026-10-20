@@ -4,6 +4,7 @@ import {
   QUEUE_COMMANDS,
   QueueAdapterError,
   nativePlaybackChangeQuality,
+  nativeStartRadar,
   nativeQueueMove,
   nativeQueuePreviewNext,
   nativePlaybackSessionSnapshot,
@@ -47,6 +48,12 @@ function setTauriRuntime(enabled: boolean) {
 }
 
 describe("native queue adapter", () => {
+  it("starts radar through the typed native session command", async () => {
+    const session = { mode: "sequence", requestedQuality: "320k", queue: SNAPSHOT, player: PLAYER };
+    invokeMock.mockResolvedValueOnce(session);
+    expect(await nativeStartRadar()).toEqual(session);
+    expect(invokeMock).toHaveBeenCalledWith("radar_start", undefined);
+  });
   it("accepts only the typed skip notice and keeps incremental snapshots compatible", () => {
     const session = { mode: "sequence", requestedQuality: "320k", queue: null, player: PLAYER,
       skipNotice: { title: "おじゃま虫Ⅱ", exhausted: false } };

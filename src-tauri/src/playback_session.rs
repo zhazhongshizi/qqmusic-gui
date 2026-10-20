@@ -25,6 +25,9 @@ use crate::{
 const AUTO_ADVANCE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const FAILED_TRACK_SKIP_DELAY: Duration = Duration::from_millis(1200);
 
+mod radar;
+pub use radar::RadarError;
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSkipNotice {
@@ -118,6 +121,8 @@ pub enum PlaybackSessionError {
 }
 
 pub struct PlaybackSession {
+    radar: Mutex<Option<radar::RadarPlayback>>,
+    radar_epoch: AtomicU64,
     lyrics: Option<Arc<crate::lyrics::LyricService>>,
     mv_lyric_offset: Mutex<i64>,
     next_override: Mutex<Option<String>>,
@@ -211,6 +216,8 @@ impl PlaybackSession {
         let _ = playback.set_volume(volume);
         playback.set_mv_fallback_enabled(queue.mv_fallback_enabled().unwrap_or(true));
         Self {
+            radar: Mutex::new(None),
+            radar_epoch: AtomicU64::new(0),
             lyrics: None,
             listening_stats: Mutex::new(crate::listening_stats::ListeningStats::new()),
             mv_lyric_offset: Mutex::new(0),
@@ -286,6 +293,7 @@ impl PlaybackSession {
             .operation
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.cancel_radar();
         let queue = self
             .queue
             .replace(items)
@@ -1148,6 +1156,17 @@ impl PlaybackSession {
     }
 
     fn pause_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        // Retain the cursor for resume, but discard any in-flight refill.
+        self.radar_epoch.fetch_add(1, Ordering::SeqCst);
+        let radar_starting = self
+            .radar
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|state| state.starting);
+        if radar_starting {
+            self.new_play_intent();
+        }
         let cancel_skip = {
             let failed = self
                 .failed_tracks
@@ -1195,6 +1214,7 @@ impl PlaybackSession {
     }
 
     fn stop_locked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        self.cancel_radar();
         *self
             .active_source
             .lock()
@@ -1898,6 +1918,7 @@ fn auto_advance_loop(session: Weak<PlaybackSession>, stop: Arc<AtomicBool>) {
         session.advance_after_failure();
         session.observe_shuffle_listening();
         let _ = session.advance_if_ended();
+        session.poll_radar();
     }
 }
 
@@ -2262,7 +2283,9 @@ mod tests {
         }
     }
 
-    fn failure_session(denied: &[&str]) -> (TestSession, Arc<Mutex<VecDeque<NativePlayerEvent>>>) {
+    pub(super) fn failure_session(
+        denied: &[&str],
+    ) -> (TestSession, Arc<Mutex<VecDeque<NativePlayerEvent>>>) {
         let root = std::env::temp_dir().join(format!("qqmusic-skip-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
@@ -2732,9 +2755,9 @@ mod tests {
         }
     }
 
-    struct TestSession {
+    pub(super) struct TestSession {
         root: std::path::PathBuf,
-        session: PlaybackSession,
+        pub(super) session: PlaybackSession,
         requests: Arc<AtomicUsize>,
     }
 

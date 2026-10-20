@@ -8,6 +8,24 @@ use crate::{
 };
 
 #[tauri::command]
+pub(crate) async fn radar_start(
+    state: State<'_, AppState>,
+) -> Result<PlaybackSessionSnapshot, PublicError> {
+    let session = state
+        .playback_session
+        .clone()
+        .ok_or_else(playback_unavailable)?;
+    let catalog = state
+        .catalog
+        .clone()
+        .ok_or_else(crate::provider_unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || session.start_radar(catalog))
+        .await
+        .map_err(|_| playback_unavailable())?
+        .map_err(crate::public_radar_error)
+}
+
+#[tauri::command]
 pub(crate) fn player_snapshot(state: State<'_, AppState>) -> Result<PlayerSnapshot, PublicError> {
     state
         .playback_session

@@ -13,6 +13,7 @@ export type PlaylistPickerProps = {
   value: string;
   onChange: (playlistId: string) => void;
   label: string;
+  variant?: "default" | "rhine";
 };
 
 type Placement = "top" | "bottom";
@@ -26,6 +27,7 @@ type PickerPosition = {
 };
 
 const OPTION_HEIGHT = 40;
+const MENU_INSET = 10;
 const MAX_MENU_HEIGHT = OPTION_HEIGHT * 6;
 const VIEWPORT_MARGIN = 8;
 const MENU_GAP = 4;
@@ -40,7 +42,7 @@ function optionDomId(pickerId: string, option: PlaylistPickerOption, index: numb
   return `${pickerId}-option-${safeId || "item"}-${index}`;
 }
 
-export default function PlaylistPicker({ options, value, onChange, label }: PlaylistPickerProps) {
+export default function PlaylistPicker({ options, value, onChange, label, variant = "default" }: PlaylistPickerProps) {
   const pickerId = useId().replace(/:/g, "");
   const triggerId = `playlist-picker-${pickerId}`;
   const listboxId = `${triggerId}-listbox`;
@@ -87,13 +89,14 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
     const rect = trigger.getBoundingClientRect();
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    const desiredHeight = Math.min(MAX_MENU_HEIGHT, options.length * OPTION_HEIGHT);
+    const inset = variant === "rhine" ? MENU_INSET : 0;
+    const desiredHeight = Math.min(MAX_MENU_HEIGHT, options.length * OPTION_HEIGHT) + inset;
     const spaceBelow = Math.max(0, viewportHeight - rect.bottom - VIEWPORT_MARGIN - MENU_GAP);
     const spaceAbove = Math.max(0, rect.top - VIEWPORT_MARGIN - MENU_GAP);
     const placement: Placement = spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? "bottom" : "top";
     const availableHeight = placement === "bottom" ? spaceBelow : spaceAbove;
     const maxHeight = Math.min(desiredHeight, availableHeight);
-    const width = Math.max(0, rect.width);
+    const width = Math.max(0, Math.min(rect.width, viewportWidth - VIEWPORT_MARGIN * 2));
     const left = Math.min(
       Math.max(VIEWPORT_MARGIN, rect.left),
       Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN),
@@ -107,7 +110,7 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
     );
 
     setPosition({ top, left, width, maxHeight, placement });
-  }, [options.length]);
+  }, [options.length, variant]);
 
   useEffect(() => {
     if (!open) return;
@@ -144,7 +147,7 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
   useEffect(() => {
     if (!open) return;
     optionRefs.current[activeIndex]?.scrollIntoView?.({ block: "nearest" });
-  }, [activeIndex, open]);
+  }, [activeIndex, open, position !== null]);
 
   useEffect(() => () => {
     if (restoreFocusFrame.current !== null) {
@@ -166,9 +169,19 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
   }, [closePicker, onChange, options]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
-    if (!open) return;
     if (options.length === 0) return;
+    if (!open) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        openPicker();
+      }
+      return;
+    }
     switch (event.key) {
+      case "Tab":
+        setOpen(false);
+        setPosition(null);
+        break;
       case "ArrowDown":
         event.preventDefault();
         setActive((activeIndexRef.current + 1) % options.length);
@@ -204,7 +217,7 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
       default:
         break;
     }
-  }, [chooseIndex, closePicker, open, options.length, setActive]);
+  }, [chooseIndex, closePicker, open, openPicker, options.length, setActive]);
 
   useEffect(() => {
     if (!open) return;
@@ -223,8 +236,9 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
         <div
           aria-label={label}
           className="playlist-picker__menu"
+          data-variant={variant}
           data-placement={position.placement}
-          data-scrollable={options.length * OPTION_HEIGHT > position.maxHeight ? "true" : "false"}
+          data-scrollable={options.length * OPTION_HEIGHT + (variant === "rhine" ? MENU_INSET : 0) > position.maxHeight ? "true" : "false"}
           id={listboxId}
           onKeyDown={handleKeyDown}
           ref={listboxRef}
@@ -265,7 +279,7 @@ export default function PlaylistPicker({ options, value, onChange, label }: Play
   const activeOptionId = activeOption ? optionDomId(triggerId, activeOption, activeIndex) : undefined;
 
   return (
-    <div className="playlist-picker">
+    <div className="playlist-picker" data-variant={variant}>
       <button
         aria-activedescendant={open ? activeOptionId : undefined}
         aria-expanded={open}

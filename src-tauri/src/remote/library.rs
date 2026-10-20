@@ -25,6 +25,8 @@ pub(super) enum LibraryRequest {
     },
     #[serde(rename = "auth_status")]
     Auth {},
+    #[serde(rename = "radar_start")]
+    RadarStart {},
     #[serde(rename = "catalog_discover_new_songs")]
     Discover { area: u8, generation: u64 },
     #[serde(rename = "catalog_search_suggestions")]
@@ -178,6 +180,16 @@ impl RemoteLibrary {
         session: &PlaybackSession,
     ) -> Result<serde_json::Value, crate::PublicError> {
         let page = match command {
+            LibraryRequest::RadarStart {} => {
+                let catalog = self
+                    .catalog
+                    .clone()
+                    .ok_or_else(crate::provider_unavailable)?;
+                let result = session
+                    .start_radar(catalog)
+                    .map_err(crate::public_radar_error)?;
+                return Ok(serde_json::json!(result));
+            }
             LibraryRequest::Personal { request } => {
                 let value = session
                     .personal_library(request)
@@ -611,6 +623,7 @@ mod tests {
     fn only_scoped_catalog_requests_are_accepted() {
         assert!(serde_json::from_str::<LibraryRequest>(r#"{"command":"catalog_search_songs","keyword":"test","page":1,"pageSize":20,"generation":1}"#).is_ok());
         for value in [
+            r#"{"command":"radar_start"}"#,
             r#"{"command":"catalog_search_suggestions","keyword":"test","generation":1}"#,
             r#"{"command":"catalog_recommend_songs","kind":"radar","page":2,"generation":1}"#,
             r#"{"command":"catalog_recommend_playlists","page":2,"pageSize":20,"generation":1}"#,
@@ -624,6 +637,7 @@ mod tests {
             assert!(serde_json::from_str::<LibraryRequest>(value).is_ok());
         }
         for value in [
+            r#"{"command":"radar_start","url":"SENTINEL"}"#,
             r#"{"command":"local_music_catalog","request":{"action":"status"}}"#,
             r#"{"command":"local_music_catalog","request":{"action":"remove","id":"x"}}"#,
             r#"{"command":"catalog_search_entities","kind":"downloads","keyword":"test","page":1,"pageSize":20,"generation":1}"#,

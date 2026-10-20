@@ -78,6 +78,7 @@
     "allow-queue-replace",
     "allow-queue-enqueue",
     "allow-queue-enqueue-many",
+    "allow-radar-start",
     "allow-queue-enqueue-next",
     "allow-playback-set-mv-lyric-offset",
     "allow-settings-set-mv-fallback-enabled",

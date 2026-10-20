@@ -78,6 +78,20 @@ it("saved queue switching updates remote state before the next track command", a
   fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:0});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"savedSong",queue_generation:12});
 });
+it("radar start uses the native session once and updates stable IDs for following controls",async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(state)));
+  vi.stubGlobal("fetch",fetcher);await connectRemote("test-code");
+  const items=Array.from({length:10},(_,index)=>({id:`radar-${index+1}`,title:"Radar",artist:"Artist",album:"",durationMs:180000}));
+  const started={...state,queue:{generation:15,selectedIndex:0,items},player:{...state.player,generation:8,state:"playing",currentTrack:{id:items[0]!.id,title:"Radar",artist:"Artist"}}};
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify(started)));
+  expect(await invokeRemote("radar_start")).toEqual(started);
+  expect(fetcher.mock.calls.at(-1)![0]).toBe("/api/library");
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({command:"radar_start"});
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:9});
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"radar-10",queue_generation:15});
+});
+
 it("batch enqueue sends stable IDs once and updates the queue used for playback",async()=>{
   const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(state)));
   vi.stubGlobal("fetch",fetcher);await connectRemote("test-code");

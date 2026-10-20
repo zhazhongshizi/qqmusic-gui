@@ -173,6 +173,24 @@ impl QueueService {
         items: Vec<QueueTrack>,
         selected: Option<usize>,
     ) -> Result<QueueSnapshot, QueueError> {
+        self.replace_checked(items, selected, None)?
+            .ok_or(QueueError::InvalidItem)
+    }
+
+    pub(crate) fn replace_if_generation(
+        &self,
+        items: Vec<QueueTrack>,
+        generation: u64,
+    ) -> Result<Option<QueueSnapshot>, QueueError> {
+        self.replace_checked(items, None, Some(generation))
+    }
+
+    fn replace_checked(
+        &self,
+        items: Vec<QueueTrack>,
+        selected: Option<usize>,
+        generation: Option<u64>,
+    ) -> Result<Option<QueueSnapshot>, QueueError> {
         validate_items(&items)?;
         let selected = selected
             .filter(|index| *index < items.len())
@@ -182,6 +200,9 @@ impl QueueService {
             .state
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if generation.is_some_and(|value| value != state.generation) {
+            return Ok(None);
+        }
         let previous = serde_json::to_string(&crate::personal::StoredQueue {
             saved_at_ms: crate::personal::now_ms(),
             items: state.items.clone(),
@@ -201,15 +222,35 @@ impl QueueService {
         state.items = items;
         state.selected_index = selected;
         state.generation = state.generation.saturating_add(1);
-        Ok(snapshot_from(&state))
+        Ok(Some(snapshot_from(&state)))
     }
 
     pub fn enqueue_many(&self, items: Vec<QueueTrack>) -> Result<QueueSnapshot, QueueError> {
+        self.enqueue_many_checked(items, None)?
+            .ok_or(QueueError::InvalidItem)
+    }
+
+    pub(crate) fn enqueue_many_if_unchanged(
+        &self,
+        items: Vec<QueueTrack>,
+        expected_ids: &[String],
+    ) -> Result<Option<QueueSnapshot>, QueueError> {
+        self.enqueue_many_checked(items, Some(expected_ids))
+    }
+
+    fn enqueue_many_checked(
+        &self,
+        items: Vec<QueueTrack>,
+        expected_ids: Option<&[String]>,
+    ) -> Result<Option<QueueSnapshot>, QueueError> {
         validate_items(&items)?;
         let mut state = self
             .state
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if expected_ids.is_some_and(|ids| !state.items.iter().map(|item| &item.id).eq(ids.iter())) {
+            return Ok(None);
+        }
         let mut next = state.items.clone();
         for item in items {
             if !next.iter().any(|existing| existing.id == item.id) {
@@ -218,7 +259,7 @@ impl QueueService {
         }
         validate_items(&next)?;
         if next.len() == state.items.len() {
-            return Ok(snapshot_from(&state));
+            return Ok(Some(snapshot_from(&state)));
         }
         let selected = state
             .selected_index
@@ -231,7 +272,7 @@ impl QueueService {
         state.items = next;
         state.selected_index = selected;
         state.generation = state.generation.saturating_add(1);
-        Ok(snapshot_from(&state))
+        Ok(Some(snapshot_from(&state)))
     }
 
     pub fn enqueue(&self, item: QueueTrack) -> Result<QueueSnapshot, QueueError> {

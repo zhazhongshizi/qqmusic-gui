@@ -179,6 +179,10 @@ export async function nativeQueueSnapshot(): Promise<QueueSnapshot> {
   return parseQueueSnapshot(await invoke(QUEUE_COMMANDS.snapshot));
 }
 
+export async function nativeStartRadar(): Promise<PlaybackSessionSnapshot> {
+  return parsePlaybackSessionSnapshot(await invoke("radar_start"));
+}
+
 export async function nativeQueueReplace(items: readonly QueueTrack[]): Promise<QueueSnapshot> {
   const normalized = normalizeItems(items);
   return parseQueueSnapshot(await invoke(QUEUE_COMMANDS.replace, { items: normalized }));

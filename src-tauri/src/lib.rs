@@ -742,6 +742,14 @@ fn public_queue_error(error: QueueError) -> PublicError {
     PublicError::new(kind, Operation::Persistence)
 }
 
+fn public_radar_error(error: playback_session::RadarError) -> PublicError {
+    match error {
+        playback_session::RadarError::Catalog(error) => public_catalog_error(error),
+        playback_session::RadarError::Session(error) => public_session_error(error),
+        playback_session::RadarError::Empty => public_catalog_error(CatalogError::Unavailable),
+    }
+}
+
 fn public_session_error(error: PlaybackSessionError) -> PublicError {
     match error {
         PlaybackSessionError::InvalidMode => {
@@ -1046,6 +1054,7 @@ pub fn run() {
             commands::playback::queue_replace,
             commands::playback::queue_enqueue,
             commands::playback::queue_enqueue_many,
+            commands::playback::radar_start,
             commands::playback::queue_enqueue_next,
             commands::playback::playback_set_mv_lyric_offset,
             commands::settings::settings_set_mv_fallback_enabled,

@@ -74,6 +74,9 @@ pub(crate) async fn auth_qr_poll(
             public_auth_error(error)
         })?;
     if let QrLoginState::Authenticated { account, .. } = &login_state {
+        if let Some(session) = &state.playback_session {
+            session.cancel_radar();
+        }
         *state
             .auth_snapshot
             .write()
@@ -97,6 +100,7 @@ pub(crate) async fn auth_logout(
     state: State<'_, AppState>,
 ) -> Result<PublicLogoutResult, PublicError> {
     if let Some(session) = &state.playback_session {
+        session.cancel_radar();
         session.clear_shuffle_likes();
     }
     let auth = state.auth.clone().ok_or_else(provider_unavailable)?;

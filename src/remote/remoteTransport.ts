@@ -76,6 +76,12 @@ export async function invokeRemote(command: string, payload: Record<string, unkn
 }
 async function dispatchRemote(command: string, payload: Record<string, unknown>): Promise<unknown> {
   if (!secret) throw new Error("尚未连接电脑");
+  if (command === "radar_start") {
+    if (connection !== "online") throw new Error("连接已断开，请等待恢复");
+    const value = await readJson("/api/library", { command });
+    latest = mergePlaybackSession(latest, parsePlaybackSessionSnapshot(value));
+    return latest;
+  }
   if (command === "personal_library") {
     if (connection !== "online") throw new Error("连接已断开，请等待恢复");
     const value = await readJson("/api/library", { command, ...payload });

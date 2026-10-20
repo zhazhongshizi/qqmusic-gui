@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getRecommendedPlaylists, getRecommendedSongs, type RecommendationKind } from "../../backend/catalogDiscoveryAdapter";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import type { CatalogEntityPage } from "../../contracts/catalogBrowse";
-import { CatalogQueuePlaybackError, MAX_CATALOG_QUEUE_ITEMS, enqueueAndPlayCatalogTrack, enqueueCatalogTrack, enqueueCatalogTracks, enqueueNextCatalogTrack, replaceAndPlayCatalogTracks } from "../player/catalogQueue";
+import { MAX_CATALOG_QUEUE_ITEMS, enqueueAndPlayCatalogTrack, enqueueCatalogTrack, enqueueCatalogTracks, enqueueNextCatalogTrack } from "../player/catalogQueue";
+import { nativeStartRadar } from "../../backend/nativeQueueAdapter";
+import { playerActions } from "../player/playerStore";
 import { recommendationPages } from "./recommendationPages";
 
 export type RecommendationAction = "play" | "next" | "enqueue";
@@ -59,12 +61,21 @@ export function useRecommendations({ kind, accountKey, active = true, pageSize }
     if (pending.current || !current.current.active || kind === "playlists" ||
         loaded.key !== key || !loaded.page?.items.length) return false;
     pending.current = true; setBusy(true);
-    setMessage({ key, text: "正在读取全部推荐…" });
+    setMessage({ key, text: kind === "radar" ? "正在读取首批雷达推荐…" : "正在读取全部推荐…" });
     const epoch = generation.current;
     const isCurrent = () => mounted.current && current.current.active && current.current.key === key && epoch === generation.current;
     const songs: CatalogSong[] = [], seen = new Set<string>();
     let hasMore = true, queueAttempted = false;
     try {
+      if (kind === "radar") {
+        queueAttempted = true;
+        const session = await nativeStartRadar();
+        if (!isCurrent()) return false;
+        await playerActions.hydrateNativeSession(session);
+        if (!isCurrent()) return false;
+        setMessage({ key, text: `已载入 ${session.queue.items.length} 首雷达推荐并开始播放` });
+        return true;
+      }
       // Read from the shelf cache, including overflow beyond its nine visible tapes.
       // Finish reading before changing the queue so a failed page cannot clear it.
       for (let number = 1; hasMore && songs.length < MAX_CATALOG_QUEUE_ITEMS; number++) {
@@ -78,25 +89,17 @@ export function useRecommendations({ kind, accountKey, active = true, pageSize }
             seen.add(song.id); songs.push(song);
           }
         }
-        hasMore = (result.hasMore && (paged !== null || (kind !== "guess" && number < 100))) ||
-          result.items.some(song => !seen.has(song.id));
+        hasMore = result.hasMore && paged !== null;
       }
       if (!isCurrent()) return false;
       if (!songs.length) { setMessage({ key, text: "没有可加入的推荐歌曲" }); return false; }
       queueAttempted = true;
-      if (kind === "radar") {
-        const result = await replaceAndPlayCatalogTracks(songs, "preserve", isCurrent);
-        if (!result || !isCurrent()) return false;
-        setMessage({ key, text: `已替换播放列表，${hasMore || result.truncated ? "载入前" : "共"} ${result.loadedCount} 首并开始播放` });
-      } else {
-        await enqueueCatalogTracks(songs);
-        if (!isCurrent()) return false;
-        setMessage({ key, text: `已将${hasMore ? "前" : "全部"} ${songs.length} 首推荐加入播放列表` });
-      }
+      await enqueueCatalogTracks(songs);
+      if (!isCurrent()) return false;
+      setMessage({ key, text: `已将${hasMore ? "前" : "全部"} ${songs.length} 首推荐加入播放列表` });
       return true;
-    } catch (error) {
-      if (isCurrent()) setMessage({ key, text: !queueAttempted ? "读取全部推荐失败，播放列表未改动，请重试" :
-        error instanceof CatalogQueuePlaybackError && error.queueReplaced ? "已替换播放列表，但播放失败，请在播放器中重试" :
+    } catch {
+      if (isCurrent()) setMessage({ key, text: kind === "radar" ? "雷达播放未能启动，请检查播放器后重试" : !queueAttempted ? "读取全部推荐失败，播放列表未改动，请重试" :
         "操作失败，请检查播放列表后重试" });
       return false;
     } finally { pending.current = false; if (mounted.current) setBusy(false); }

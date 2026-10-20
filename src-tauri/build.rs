@@ -62,6 +62,7 @@ fn main() {
             "queue_replace",
             "queue_enqueue",
             "queue_enqueue_many",
+            "radar_start",
             "queue_enqueue_next",
             "playback_set_mv_lyric_offset",
             "settings_set_mv_fallback_enabled",
