@@ -13,7 +13,7 @@
 </div>
 
 
-> 当前源码与构建版本：**1.3.1**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
+> 当前源码与构建版本：**1.3.2**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
 
 ## 功能
 
@@ -69,7 +69,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.3.1；线上发行版本以官方页面为准。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.3.2；线上发行版本以官方页面为准。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider` 文件夹。
 3. 运行 `qqmusic-gui.exe`。发行版包含 Python Provider，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。

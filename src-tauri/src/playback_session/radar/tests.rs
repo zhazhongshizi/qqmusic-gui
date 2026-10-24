@@ -67,6 +67,208 @@ fn playing_at(session: &PlaybackSession, index: usize) {
     session.playback.play().unwrap();
 }
 
+fn recover_and_refill(session: &PlaybackSession, next_id: &str) {
+    {
+        let mut failed = session.failed_tracks.lock().unwrap();
+        failed.pending.as_mut().unwrap().2 = Instant::now();
+    }
+    session.advance_after_failure();
+    assert_eq!(session.snapshot().player.current_track.unwrap().id, next_id);
+    playing_at(session, 4);
+    let (epoch, reader, ids) = session.prepare_radar_refill().unwrap();
+    session.refill_radar(epoch, reader, ids);
+    assert_eq!(session.queue.snapshot().items.len(), 15);
+    assert_eq!(session.queue.snapshot().selected_index, Some(4));
+}
+
+#[test]
+fn pause_during_first_source_resolution_keeps_refills_on_early_or_late_resume() {
+    for resume_before_response in [false, true] {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (test, _) = crate::playback_session::tests::gated_failure_session(
+            &[],
+            Some((entered_tx, release_rx)),
+        );
+        let feed = Feed::new(10);
+        thread::scope(|scope| {
+            let session = &test.session;
+            let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+            entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_eq!(session.queue.snapshot().items.len(), 10);
+            session.pause().unwrap();
+            assert!(session.prepare_radar_refill().is_none());
+            if resume_before_response {
+                session.toggle_playback().unwrap();
+            }
+            release_tx.send(()).unwrap();
+            assert!(matches!(
+                worker.join().unwrap(),
+                Err(RadarError::Session(PlaybackSessionError::Superseded))
+            ));
+            if !resume_before_response {
+                assert!(session.snapshot().player.current_track.is_none());
+                session.toggle_playback().unwrap();
+            }
+        });
+        assert_eq!(
+            test.session.snapshot().player.current_track.unwrap().id,
+            "song-1"
+        );
+        playing_at(&test.session, 4);
+        let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
+        test.session.refill_radar(epoch, reader, ids);
+        assert_eq!(test.session.queue.snapshot().items.len(), 15);
+        assert_eq!(feed.calls.load(Ordering::SeqCst), 2);
+    }
+}
+
+#[test]
+fn cancelling_first_source_resolution_prevents_late_playback() {
+    for action in ["account", "stop", "replace"] {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (test, _) = crate::playback_session::tests::gated_failure_session(
+            &[],
+            Some((entered_tx, release_rx)),
+        );
+        let feed = Feed::new(10);
+        thread::scope(|scope| {
+            let session = &test.session;
+            let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+            entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            match action {
+                "account" => session.cancel_radar(),
+                "stop" => {
+                    session.stop().unwrap();
+                }
+                _ => {
+                    session.replace_queue(vec![]).unwrap();
+                }
+            }
+            release_tx.send(()).unwrap();
+            assert!(matches!(
+                worker.join().unwrap(),
+                Err(RadarError::Session(PlaybackSessionError::Superseded))
+            ));
+        });
+        assert!(test.session.snapshot().player.current_track.is_none());
+        assert!(test.session.radar.lock().unwrap().is_none());
+    }
+}
+
+#[test]
+fn account_cancellation_does_not_supersede_a_later_ordinary_play_request() {
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let (test, _) =
+        crate::playback_session::tests::gated_failure_session(&[], Some((entered_tx, release_rx)));
+    let feed = Feed::new(10);
+    thread::scope(|scope| {
+        let session = &test.session;
+        let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        playing_at(session, 3);
+        let intent = session.play_intent.load(Ordering::SeqCst);
+        let player = session.snapshot().player;
+        session.cancel_radar();
+        assert_eq!(session.play_intent.load(Ordering::SeqCst), intent);
+        release_tx.send(()).unwrap();
+        assert!(matches!(
+            worker.join().unwrap(),
+            Err(RadarError::Session(PlaybackSessionError::Superseded))
+        ));
+        assert_eq!(session.snapshot().player, player);
+    });
+    assert!(test.session.radar.lock().unwrap().is_none());
+}
+
+#[test]
+fn old_source_resolution_cannot_clear_a_restarted_radar_session() {
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let (test, _) =
+        crate::playback_session::tests::gated_failure_session(&[], Some((entered_tx, release_rx)));
+    thread::scope(|scope| {
+        let session = &test.session;
+        let worker = scope.spawn(|| session.start_radar(Feed::new(10).catalog()));
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        session.start_radar(Feed::new(10).catalog()).unwrap();
+        release_tx.send(()).unwrap();
+        assert!(matches!(
+            worker.join().unwrap(),
+            Err(RadarError::Session(PlaybackSessionError::Superseded))
+        ));
+    });
+    playing_at(&test.session, 4);
+    let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
+    test.session.refill_radar(epoch, reader, ids);
+    assert_eq!(test.session.queue.snapshot().items.len(), 15);
+}
+
+#[test]
+fn unavailable_first_or_later_song_keeps_radar_refilling_after_auto_skip() {
+    for (denied, next_id) in [("song-1", "song-2"), ("song-3", "song-4")] {
+        let (test, _) = crate::playback_session::tests::failure_session(&[denied]);
+        let feed = Feed::new(10);
+        let result = test.session.start_radar(feed.catalog());
+        if denied == "song-1" {
+            assert!(result.is_err());
+        } else {
+            result.unwrap();
+            assert!(test.session.play_index(2, PlaybackQuality::Auto).is_err());
+        }
+        recover_and_refill(&test.session, next_id);
+        assert_eq!(feed.calls.load(Ordering::SeqCst), 2);
+    }
+}
+
+#[test]
+fn native_decode_failure_keeps_radar_refilling_after_auto_skip() {
+    let (test, events) = crate::playback_session::tests::failure_session(&[]);
+    let feed = Feed::new(10);
+    test.session.start_radar(feed.catalog()).unwrap();
+    playing_at(&test.session, 2);
+    let generation = test.session.snapshot().player.generation;
+    events.lock().unwrap().push_back(NativePlayerEvent::Failed {
+        generation,
+        failure: crate::player::PlayerFailure::new(PlayerFailureCode::Decoding, generation),
+    });
+    test.session.handle_native_events();
+    recover_and_refill(&test.session, "song-4");
+    assert_eq!(feed.calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn manual_replay_supersedes_initial_radar_read_without_changing_queue_generation() {
+    let (test, _) = crate::playback_session::tests::failure_session(&[]);
+    // A short page would trigger further reads unless the changed intent is checked.
+    let feed = Feed::new(2);
+    let before = test.session.queue.snapshot();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    *feed.gate.lock().unwrap() = Some((entered_tx, release_rx));
+    thread::scope(|scope| {
+        let session = &test.session;
+        let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        session.play_index(0, PlaybackQuality::Auto).unwrap();
+        assert_eq!(session.queue.snapshot().generation, before.generation);
+        release_tx.send(()).unwrap();
+        assert!(matches!(
+            worker.join().unwrap(),
+            Err(RadarError::Session(PlaybackSessionError::Superseded))
+        ));
+    });
+    assert_eq!(test.session.queue.snapshot(), before);
+    assert_eq!(
+        test.session.snapshot().player.current_track.unwrap().id,
+        "one"
+    );
+    assert_eq!(feed.calls.load(Ordering::SeqCst), 1);
+    assert!(test.session.radar.lock().unwrap().is_none());
+}
+
 #[test]
 fn starts_with_ten_and_refills_five_at_fifth_tenth_and_fifteenth_tracks() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);

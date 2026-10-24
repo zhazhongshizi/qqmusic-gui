@@ -293,7 +293,7 @@ impl PlaybackSession {
             .operation
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        self.cancel_radar();
+        self.cancel_radar_locked();
         let queue = self
             .queue
             .replace(items)
@@ -1156,17 +1156,7 @@ impl PlaybackSession {
     }
 
     fn pause_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
-        // Retain the cursor for resume, but discard any in-flight refill.
-        self.radar_epoch.fetch_add(1, Ordering::SeqCst);
-        let radar_starting = self
-            .radar
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .is_some_and(|state| state.starting);
-        if radar_starting {
-            self.new_play_intent();
-        }
+        self.pause_radar_locked();
         let cancel_skip = {
             let failed = self
                 .failed_tracks
@@ -1214,7 +1204,12 @@ impl PlaybackSession {
     }
 
     fn stop_locked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
-        self.cancel_radar();
+        self.cancel_radar_locked();
+        self.stop_player_locked()
+    }
+
+    // Automatic failure recovery stops the source without ending its radar queue.
+    fn stop_player_locked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
         *self
             .active_source
             .lock()
@@ -1765,7 +1760,7 @@ impl PlaybackSession {
             *next_override = None;
         }
         drop(next_override);
-        let _ = self.stop_locked();
+        let _ = self.stop_player_locked();
         let mode = *self
             .mode
             .read()
@@ -2251,6 +2246,7 @@ mod tests {
         denied: HashSet<String>,
         requests: Arc<AtomicUsize>,
         queue: Arc<QueueService>,
+        gate: Mutex<Option<SourceGate>>,
     }
 
     impl ProviderRequestPort for SelectiveProvider {
@@ -2258,6 +2254,11 @@ mod tests {
             self.requests.fetch_add(1, Ordering::SeqCst);
             let queue = self.queue.snapshot();
             let id = queue.items[queue.selected_index.unwrap()].id.as_str();
+            let gate = self.gate.lock().unwrap().take();
+            if let Some((entered, release)) = gate {
+                entered.send(()).unwrap();
+                release.recv_timeout(Duration::from_secs(5)).unwrap();
+            }
             let global_failure = match id {
                 "network" => Some("network_unavailable"),
                 "authentication" => Some("authentication_required"),
@@ -2286,6 +2287,15 @@ mod tests {
     pub(super) fn failure_session(
         denied: &[&str],
     ) -> (TestSession, Arc<Mutex<VecDeque<NativePlayerEvent>>>) {
+        gated_failure_session(denied, None)
+    }
+
+    pub(super) type SourceGate = (std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>);
+
+    pub(super) fn gated_failure_session(
+        denied: &[&str],
+        gate: Option<SourceGate>,
+    ) -> (TestSession, Arc<Mutex<VecDeque<NativePlayerEvent>>>) {
         let root = std::env::temp_dir().join(format!("qqmusic-skip-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
@@ -2300,6 +2310,7 @@ mod tests {
         let events = Arc::new(Mutex::new(VecDeque::new()));
         let playback = Arc::new(PlaybackController::with_resolver(
             Arc::new(SelectiveProvider {
+                gate: Mutex::new(gate),
                 denied: denied.iter().map(|id| (*id).to_owned()).collect(),
                 requests: requests.clone(),
                 queue: queue.clone(),
