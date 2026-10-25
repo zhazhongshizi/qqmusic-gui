@@ -46,6 +46,92 @@ async def test_real_sdk_session_rebuild_keeps_device_and_credential(sdk_session:
     assert rebuilt._engine.transport._client.trust_env is False
 
 
+@pytest.mark.parametrize("empty_cookie", ["", None])
+async def test_real_sdk_qq_login_accepts_empty_response_cookies(
+    sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch, empty_cookie: str | None,
+):
+    from niquests.models import Response
+    from qqmusic_api.models.login import QR, QRLoginType
+
+    from qqmusic_provider.auth import QQMusicAuthSource
+
+    client = sdk_session.client()
+    original_execute = client.execute
+    visited = []
+
+    async def request(method, url, **kwargs):
+        visited.append(url)
+        response = Response()
+        response.status_code = 200
+        response._content_consumed = True
+        response.encoding = "utf-8"
+        if url.endswith("ptqrlogin"):
+            response._content = (
+                b"ptuiCB('0','0','https://fixture.invalid/?uin=123&service=ptqrlogin"
+                b"&ptsigx=fixture-signature&s_url=fixture','0','fixture');"
+            )
+        elif url.endswith("check_sig"):
+            response.status_code = 302
+            response._content = b""
+            response.cookies.set("p_skey", "fixture-signature-cookie")
+            response.cookies.set("empty-upstream-cookie", empty_cookie)
+        else:
+            assert url == "https://graph.qq.com/oauth2.0/authorize"
+            assert kwargs["cookies"]["p_skey"] == "fixture-signature-cookie"
+            response.status_code = 302
+            response._content = b""
+            response.headers["Location"] = "https://fixture.invalid/?code=fixture-code&state=state"
+        return response
+
+    async def execute(descriptor):
+        if isinstance(descriptor, CgiRequest):
+            assert descriptor.module == "QQConnectLogin.LoginServer"
+            assert descriptor.method == "QQLogin"
+            assert descriptor.param == {"code": "fixture-code"}
+            return {"musicid": 123, "musickey": "fixture-music-key"}
+        return await original_execute(descriptor)
+
+    monkeypatch.setattr(client._engine.transport._client, "request", request)
+    monkeypatch.setattr(client, "execute", execute)
+    result = await QQMusicAuthSource(sdk_session).check_qr(
+        QR(b"", QRLoginType.QQ, "image/png", "fixture-qr-signature")
+    )
+    assert result.state == "authenticated"
+    assert result.credential["musicid"] == 123
+    assert client.credential.musickey == "fixture-music-key"
+    assert len(visited) == 3
+
+
+async def test_response_cookie_fix_preserves_missing_and_conflicting_names(
+    sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch,
+):
+    from niquests.cookies import CookieConflictError
+    from niquests.models import Response
+    from qqmusic_api.core.transport import PreparedRequest
+
+    response = Response()
+    response.status_code = 200
+    response._content = b""
+    response._content_consumed = True
+    response.cookies.set("empty", "", domain="fixture.invalid", path="/")
+    response.cookies.set("duplicate", "one", domain="a.invalid")
+    response.cookies.set("duplicate", "two", domain="b.invalid")
+
+    async def request(*args, **kwargs):
+        return response
+
+    transport = sdk_session.client()._engine.transport
+    monkeypatch.setattr(transport._client, "request", request)
+    result = await transport.request(PreparedRequest("GET", "https://fixture.invalid/"))
+    assert result.cookies["empty"] == ""
+    with pytest.raises(KeyError):
+        result.cookies["missing"]
+    with pytest.raises(CookieConflictError):
+        result.cookies["duplicate"]
+    assert len(result.cookies) == 3
+    assert any(cookie.domain == "fixture.invalid" for cookie in result.cookies)
+
+
 _CATALOG_CASES = [
     ("search.hotkeys", {}),
     ("search.complete", {"keyword": "晴"}),

@@ -442,6 +442,7 @@ fn spawn_auth_event_bridge(
                             Ok(event) => event,
                             Err(error) => auth_qr_event_error(error),
                         };
+                        file_logging::auth_qr_event(&public_event);
                         #[cfg(debug_assertions)]
                         {
                             let state = auth_qr_event_state(&public_event);
@@ -463,6 +464,7 @@ fn spawn_auth_event_bridge(
                                 AuthSnapshot::authenticated(Some(account.clone()));
                         }
                         if app.emit(AUTH_QR_RENDERER_EVENT, &public_event).is_err() {
+                            file_logging::event("auth_qr_event_emit_failed");
                             #[cfg(debug_assertions)]
                             eprintln!(
                                 "{{\"level\":\"debug\",\"code\":\"auth_qr_event_emit_failed\"}}"

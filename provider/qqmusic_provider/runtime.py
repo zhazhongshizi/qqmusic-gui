@@ -201,10 +201,9 @@ class ProviderRuntime:
                 return error_frame(request.request_id, "invalid_params")
             return success_frame(request.request_id, {"pong": True})
         if request.method in IMPLEMENTED_AUTH_METHODS:
-            if request.method in {"auth.qr.start", "auth.qr.cancel", "auth.logout"}:
-                self._qr_generation += 1
-            qr_generation = self._qr_generation
             async with self._exclusive_upstream():
+                if request.method in {"auth.qr.start", "auth.logout"}:
+                    self._qr_generation += 1
                 failed_generation = self._session.generation if self._session is not None else 0
                 try:
                     with anyio.fail_after(UPSTREAM_TIMEOUT_SECONDS):
@@ -216,6 +215,11 @@ class ProviderRuntime:
                     if self._session is not None:
                         await self._session.rebuild_if_current(failed_generation)
                     return error_frame(request.request_id, "upstream_timeout", retryable=True)
+                # A late cancellation for an older QR must not retire the
+                # current QR's poller. AuthService validates ownership first.
+                if request.method == "auth.qr.cancel" and response.get("ok") is True:
+                    self._qr_generation += 1
+                qr_generation = self._qr_generation
             if request.method == "auth.qr.start" and response.get("ok") is True:
                 self._start_qr_background(response, qr_generation)
             return response
@@ -348,6 +352,10 @@ class ProviderRuntime:
             failed_generation = self._session.generation if self._session is not None else 0
             try:
                 async with self._exclusive_upstream():
+                    # A start/cancel/logout may have completed while this poll
+                    # waited for the upstream lock.
+                    if self._qr_generation != generation:
+                        return
                     with anyio.fail_after(QR_BACKGROUND_TIMEOUT_SECONDS):
                         result = await self._auth_execute_qr_poll(session_id)
             except TimeoutError:

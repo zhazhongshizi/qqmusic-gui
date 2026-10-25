@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import Mapping
 
 import pytest
@@ -18,6 +19,21 @@ from qqmusic_provider.auth import (
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+def test_qr_upstream_diagnostic_logs_only_fixed_reason_and_numeric_code(capsys) -> None:
+    from qqmusic_api import ApiDataError, LoginRateLimitError
+
+    auth._log_qr_upstream_failure(ApiDataError("获取 p_skey 失败"))
+    auth._log_qr_upstream_failure(LoginRateLimitError(code=104604))
+    auth._log_qr_upstream_failure(ValueError("private-account-cookie-response"))
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "private-account-cookie-response" not in captured.err
+    records = [json.loads(line) for line in captured.err.splitlines()]
+    assert records[0]["stage"] == "qq_signature_cookie_missing"
+    assert records[1]["upstreamCode"] == 104604
+    assert records[2]["stage"] == "qr_check_or_credential_exchange"
 
 
 def _credential(**changes: object) -> dict[str, object]:

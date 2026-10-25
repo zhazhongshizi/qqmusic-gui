@@ -520,7 +520,7 @@ export default function LibraryWorkspace({
               {playlistDetail.state === "ready" && playlistDetail.page.items.length > 0 ? (
                 <button
                   className="text-button text-button--primary playlist-detail__play-all"
-                  disabled={playlistPlaybackBusy || playlistBatchBusy}
+                  disabled={playlistPlaybackBusy || playlistBatchBusy || playlistDetail.playlist.songCount === 0}
                   onClick={() => void handlePlayAll()}
                   type="button"
                 >
@@ -586,16 +586,31 @@ export default function LibraryWorkspace({
               <p>歌单暂时无法打开</p><span>网络恢复后可以重新读取。</span>
               <button className="text-button text-button--primary" onClick={() => void openPlaylist(playlistDetail.playlist, playlistDetail.page)} type="button">重新读取</button>
             </div>
-          ) : playlistDetail.page.items.length === 0 ? (
-            <div className="catalog-empty"><p>这个歌单还没有歌曲</p><span>返回全部歌单后可以继续浏览。</span></div>
           ) : (
             <PlaylistSongList
-              key={playlistDetail.playlist.id}
+              key={`${accountKey}:${playlistDetail.playlist.id}`}
               playlist={playlistDetail.playlist}
               initialPage={playlistDetail.page}
               currentTrackId={currentTrack?.id}
               disabled={playlistPlaybackBusy}
               onBusyChange={setPlaylistBatchBusy}
+              accountKey={accountKey}
+              allowRemoval={!remote && !authRecovering && authSnapshot.state === "authenticated"}
+              onPageRead={page => setPlaylistDetail(current => current.state === "ready" ? {
+                ...current, page, playlist: { ...current.playlist, songCount: page.total ?? current.playlist.songCount },
+              } : current)}
+              onSongsRemoved={ids => {
+                setInspectedPlaylistTrack(null);
+                setSelectedId("");
+                setPlaylistDetail(current => current.state === "ready" ? {
+                  ...current, page: { ...current.page, items: current.page.items.filter(song => !ids.includes(song.id)) },
+                  playlist: { ...current.playlist, songCount: Math.max(0, current.playlist.songCount - ids.length) },
+                } : current);
+                setCreatedPlaylistsState(current => current.state === "ready" ? {
+                  ...current, page: { ...current.page, items: current.page.items.map(item => item.id === playlistDetail.playlist.id
+                    ? { ...item, songCount: Math.max(0, item.songCount - ids.length) } : item) },
+                } : current);
+              }}
               renderCells={(track) => <>
                 <td><AlbumArtwork compact track={liveArtworkTrack(track)} /></td>
                 <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setInspectedPlaylistTrack(track); }} type="button"><strong>{track.title}</strong><small>{track.id}</small></button></td>

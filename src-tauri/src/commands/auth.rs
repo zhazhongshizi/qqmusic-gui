@@ -47,7 +47,10 @@ pub(crate) async fn auth_qr_start(
         session.clear_shuffle_likes();
     }
     let auth = state.auth.clone().ok_or_else(provider_unavailable)?;
-    run_auth_blocking(move || auth.start_qr(&login_method)).await
+    crate::file_logging::event("auth_qr_start_requested");
+    let started = run_auth_blocking(move || auth.start_qr(&login_method)).await?;
+    crate::file_logging::event("auth_qr_started");
+    Ok(started)
 }
 
 #[tauri::command]
@@ -92,7 +95,9 @@ pub(crate) async fn auth_qr_cancel(
     state: State<'_, AppState>,
 ) -> Result<QrLoginState, PublicError> {
     let auth = state.auth.clone().ok_or_else(provider_unavailable)?;
-    run_auth_blocking(move || auth.cancel_qr(&session_id)).await
+    let cancelled = run_auth_blocking(move || auth.cancel_qr(&session_id)).await?;
+    crate::file_logging::event("auth_qr_cancelled");
+    Ok(cancelled)
 }
 
 #[tauri::command]
@@ -105,6 +110,7 @@ pub(crate) async fn auth_logout(
     }
     let auth = state.auth.clone().ok_or_else(provider_unavailable)?;
     let result = run_auth_blocking(move || auth.logout()).await?;
+    crate::file_logging::event("auth_logout_completed");
     *state
         .auth_snapshot
         .write()

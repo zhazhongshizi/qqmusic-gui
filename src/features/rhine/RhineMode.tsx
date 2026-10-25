@@ -23,6 +23,9 @@ import { ArchiveDiscovery } from "./ArchiveDiscovery";
 import { PersonalLibrary } from "../library/PersonalLibrary";
 import { ListeningStatistics } from "../library/ListeningStatistics";
 import { usePlaylistSongSearch } from "./usePlaylistSongSearch";
+import { usePlaylistRemoval } from "../library/usePlaylistRemoval";
+import { PlaylistRemovalConfirmation } from "../library/PlaylistRemovalConfirmation";
+import { PlaylistActionIcon } from "./PlaylistActionIcon";
 import { RhineSettingsPanel } from "./RhineSettingsPanel";
 import { defaultRhineSettings, readRhineSettings, writeRhineSettings } from "./rhineSettings";
 import "./rhine.css";
@@ -53,7 +56,10 @@ function Lyrics() {
   return track?.lyrics.length ? <ScrollingLyrics lyrics={track.lyrics} activeIndex={position} /> : <p>当前歌曲暂无歌词</p>;
 }
 
-function PlaylistDetail({ playlist, onBack, onPlayback }: { playlist: PlaylistSummary; onBack: () => void; onPlayback: () => void }) {
+function PlaylistDetail({ playlist, onBack, onPlayback, allowRemoval, accountKey, onSongsRemoved }: {
+  playlist: PlaylistSummary; onBack: () => void; onPlayback: () => void;
+  allowRemoval: boolean; accountKey: string; onSongsRemoved: (count: number) => void;
+}) {
   const generation = useRef(0);
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
@@ -68,8 +74,15 @@ function PlaylistDetail({ playlist, onBack, onPlayback }: { playlist: PlaylistSu
   const [retry, setRetry] = useState(0);
   const [singleBusy, setSingleBusy] = useState(false);
   const pending = useRef(false);
+  const [checked, setChecked] = useState<Map<string, CatalogSong>>(() => new Map());
   const currentId = usePlayerSelector(s => getCurrentTrack(s)?.id);
   const { playlistPlaybackBusy, handlePlayAll, queueNotice, setQueueNotice } = usePlaylistPlayback(playlist, generation, singleBusy);
+  const removal = usePlaylistRemoval(playlist, !allowRemoval || singleBusy || playlistPlaybackBusy, ids => {
+    setChecked(new Map()); setPage(1); setResultPage(1); setLoading(true);
+    search.retry(); setRetry(value => value + 1); onSongsRemoved(ids.length);
+  }, accountKey);
+  const canRemove = allowRemoval && !!playlist.editableId;
+  const locked = singleBusy || playlistPlaybackBusy || removal.busy || !!removal.target;
   useEffect(() => {
     let alive = true;
     setLoading(true); setError(false); setSongs(null);
@@ -79,7 +92,7 @@ function PlaylistDetail({ playlist, onBack, onPlayback }: { playlist: PlaylistSu
     return () => { alive = false; };
   }, [playlist.id, playlist.editableId, page, retry]);
   async function act(track: CatalogSong, play: boolean, next = false) {
-    if (pending.current || playlistPlaybackBusy) return;
+    if (pending.current || playlistPlaybackBusy || removal.busy || removal.target) return;
     const epoch = generation.current;
     pending.current = true; setSingleBusy(true);
     try {
@@ -102,30 +115,47 @@ function PlaylistDetail({ playlist, onBack, onPlayback }: { playlist: PlaylistSu
   const rowsLoading = searching ? search.loading : loading;
   const rowsError = searching ? search.error : error;
   const hasMore = searching ? resultPage * 20 < matches.length : !!songs?.hasMore;
+  const selectable = rowsLoading || rowsError ? [] : searching ? matches : rows;
+  const allChecked = selectable.length > 0 && selectable.every(({ track }) => checked.has(track.id));
   return <section className="rhine-document rhine-playlist-document" aria-label="歌单详情">
     <button className="rhine-back" onClick={onBack}>← 返回档案阵列</button>
     <p className="rhine-eyebrow">PLAYLIST / {playlist.id}</p>
     <h2>{playlist.title}</h2><p>{playlist.description || "音乐档案"}</p>
-    <div className="rhine-document-actions"><span>{playlist.songCount} 首歌曲</span><button disabled={singleBusy || playlistPlaybackBusy || loading || error || !songs?.items.length} onClick={() => { const epoch = generation.current; void handlePlayAll().then(result => { if (result && generation.current === epoch) onPlayback(); }); }}>播放全部</button></div>
+    <div className="rhine-document-actions"><span>{songs?.total ?? playlist.songCount} 首歌曲</span><button disabled={locked || loading || error || !songs?.items.length} onClick={() => { const epoch = generation.current; void handlePlayAll().then(result => { if (result && generation.current === epoch) onPlayback(); }); }}>播放全部</button></div>
     <form className="rhine-playlist-search rhine-search-form" onSubmit={e => { e.preventDefault(); setQuery(searchInput.trim()); setResultPage(1); }}>
       <input type="search" aria-label="在歌单内搜索" placeholder="在此歌单搜索歌曲、歌手或专辑" maxLength={100} value={searchInput} onChange={e => { setSearchInput(e.target.value); if (!e.target.value.trim()) { setQuery(""); setResultPage(1); } }} />
       <button type="submit" disabled={!searchInput.trim()}>搜索</button>
-      <button type="button" disabled={singleBusy || playlistPlaybackBusy} onClick={()=>{search.retry();setRetry(r=>r+1);setPage(1);setResultPage(1);}}>刷新歌单</button>
+      <button type="button" disabled={locked} onClick={()=>{search.retry();setRetry(r=>r+1);setPage(1);setResultPage(1);setChecked(new Map());}}>刷新歌单</button>
       {searching && <button type="button" onClick={() => { setSearchInput(""); setQuery(""); setResultPage(1); }}>清除</button>}
     </form>
+    {canRemove && <div className="rhine-playlist-selection" role="group" aria-label="批量选择歌曲">
+      <label><input type="checkbox" checked={allChecked} disabled={locked || !selectable.length} onChange={() => setChecked(previous => {
+        const next = new Map(previous);
+        for (const { track } of selectable) { if (allChecked) next.delete(track.id); else next.set(track.id, track); }
+        return next;
+      })} />{searching ? "全选搜索结果" : "全选本页"}</label>
+      <span>已选 {checked.size} 首</span>
+      <button type="button" disabled={locked || !checked.size} onClick={() => setChecked(new Map())}>清空选择</button>
+      <button type="button" disabled={locked || !checked.size} onClick={() => removal.request([...checked.values()])}>将所选歌曲移出歌单</button>
+    </div>}
+    <PlaylistRemovalConfirmation removal={removal} rhine />
+    {removal.notice && <p className="rhine-notice" role="status">{removal.notice}</p>}
     {searching && !rowsLoading && !rowsError && <p className="rhine-search-count" role="status">“{query}” · {matches.length} 首匹配</p>}
     <p className="rhine-notice" role="status">{queueNotice}</p>
     {rowsLoading ? <p role="status">{searching ? "正在读取整张歌单以搜索…" : "正在读取歌曲…"}</p> : rowsError ? <p role="alert">{searching ? "未能读取完整歌单，搜索尚未完成" : "歌曲读取失败"} <button onClick={() => searching ? search.retry() : setRetry(r => r + 1)}>重试</button></p> : !rows.length ? <p>{searching ? "歌单内没有匹配的歌曲，换个关键词试试。" : "这个歌单还没有歌曲"}</p> : <ol className="rhine-songs" start={(shownPage - 1) * 20 + 1}>
       {rows.map(({ track, index }) => <li key={track.id} value={index + 1} data-playing={track.id === currentId}>
-        <div className="rhine-song-info"><SongCover cacheKey={track.coverCacheKey} title={track.title} /><span className="rhine-song-text"><strong>{track.title}</strong><small><SongArtistLinks track={track} /> · {track.album}</small></span></div>
+        <div className={`rhine-song-info${canRemove ? " rhine-song-info--editable" : ""}`}>{canRemove && <input type="checkbox" aria-label={`选择 ${track.title}`} checked={checked.has(track.id)} disabled={locked} onChange={() => setChecked(previous => {
+          const next = new Map(previous); if (next.has(track.id)) next.delete(track.id); else next.set(track.id, track); return next;
+        })} />}<SongCover cacheKey={track.coverCacheKey} title={track.title} /><span className="rhine-song-text"><strong>{track.title}</strong><small><SongArtistLinks track={track} /> · {track.album}</small></span></div>
         <span className="rhine-song-actions">
-          <button className="play-next-button" disabled={singleBusy || playlistPlaybackBusy} aria-label={`下一首播放 ${track.title}`} title="下一首播放" onClick={() => void act(track, false, true)}><Icon name="play-next" size={20} /></button>
-          <button disabled={singleBusy || playlistPlaybackBusy} aria-label={`播放 ${track.title}`} onClick={() => void act(track, true)}>播放</button>
-          <button disabled={singleBusy || playlistPlaybackBusy} aria-label={`加入队列 ${track.title}`} onClick={() => void act(track, false)}>＋</button>
+          <button className="play-next-button" disabled={locked} aria-label={`下一首播放 ${track.title}`} title="下一首播放" onClick={() => void act(track, false, true)}><Icon name="play-next" size={20} /></button>
+          <button className="rhine-playlist-icon-button" disabled={locked} title="播放" aria-label={`播放 ${track.title}`} onClick={() => void act(track, true)}><PlaylistActionIcon kind="play" /></button>
+          <button className="rhine-playlist-icon-button" disabled={locked} title="加入队列" aria-label={`加入队列 ${track.title}`} onClick={() => void act(track, false)}><PlaylistActionIcon kind="queueAdd" /></button>
+          {canRemove && <button className="rhine-playlist-icon-button" disabled={locked} title="移出歌单" aria-label={`将《${track.title}》移出歌单`} onClick={() => removal.request([track])}><PlaylistActionIcon kind="playlistRemove" /></button>}
         </span>
       </li>)}
     </ol>}
-    <nav className="rhine-pages" aria-label="歌曲分页"><button disabled={rowsLoading || rowsError || shownPage === 1} onClick={() => searching ? setResultPage(p => p - 1) : setPage(p => p - 1)}>上一页</button><span>第 {shownPage} 页</span><button disabled={rowsLoading || rowsError || !hasMore} onClick={() => searching ? setResultPage(p => p + 1) : setPage(p => p + 1)}>下一页</button></nav>
+    <nav className="rhine-pages" aria-label="歌曲分页"><button disabled={locked || rowsLoading || rowsError || shownPage === 1} onClick={() => searching ? setResultPage(p => p - 1) : setPage(p => p - 1)}>上一页</button><span>第 {shownPage} 页</span><button disabled={locked || rowsLoading || rowsError || !hasMore} onClick={() => searching ? setResultPage(p => p + 1) : setPage(p => p + 1)}>下一页</button></nav>
   </section>;
 }
 
@@ -299,7 +329,7 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
       <div className="rhine-index"><span>{deck ? "TAPE TRANSPORT" : "COLLECTION"} / {String((deck ? trackIndex : selected) + 1).padStart(2, "0")}</span><i /><span>{deck ? "ANALOG FORM / DIGITAL SOUND" : "音乐，由此展开"}</span></div>
       {(!deck || queue || settingsOpen) && <NowPlaying onOpen={() => { closeSettings(); setQueue(false); setDeck(true); }} />}
       {!search && (authRecovering || loading ? <p className="rhine-empty" role="status">正在读取音乐档案…</p> : auth.state !== "authenticated" ? <div className="rhine-empty"><h2>登录后访问你的音乐档案</h2><button onClick={onAccount}>打开账号</button></div> : error ? <div className="rhine-empty" role="alert">歌单读取失败 <button onClick={() => setRetry(r => r + 1)}>重试</button></div> : !items.length ? <p className="rhine-empty">这里还没有{kind === "created" ? "创建" : "收藏"}的歌单</p> : null)}
-      <div hidden={search || deck || lyrics || queue} className="rhine-browse-content">{detail && playlist ? <PlaylistDetail key={playlist.id} playlist={playlist} onBack={() => setDetail(false)} onPlayback={() => setDeck(true)} /> : playlist ? <section className="rhine-selection"><p className="rhine-eyebrow">PLAYLIST / {String(selected + 1).padStart(2, "0")} · ID {playlist.id}</p><h1>{playlist.title}</h1><p>{playlist.songCount} 首歌曲</p><button onClick={() => setDetail(true)}>抽取档案 · 打开歌单 ↗</button></section> : null}</div>
+      <div hidden={search || deck || lyrics || queue} className="rhine-browse-content">{detail && playlist ? <PlaylistDetail key={`${auth.state}:${accountId}:${playlist.id}`} playlist={playlist} accountKey={`${auth.state}:${accountId}`} allowRemoval={!authRecovering && auth.state === "authenticated"} onSongsRemoved={count => setCatalog(current => current ? { ...current, items: current.items.map(item => item.id === playlist.id ? { ...item, songCount: Math.max(0, item.songCount - count) } : item) } : current)} onBack={() => setDetail(false)} onPlayback={() => setDeck(true)} /> : playlist ? <section className="rhine-selection"><p className="rhine-eyebrow">PLAYLIST / {String(selected + 1).padStart(2, "0")} · ID {playlist.id}</p><h1>{playlist.title}</h1><p>{playlist.songCount} 首歌曲</p><button onClick={() => setDetail(true)}>抽取档案 · 打开歌单 ↗</button></section> : null}</div>
       {search && <ArchiveSearch key={accountId ?? "guest"} active={!deck && !lyrics && !settingsOpen} onClose={() => setSearch(false)} />}
       {deck && !queue && <TapeDeck accountKey={`${auth.state}:${accountId ?? "guest"}:${authRecovering}`} authenticated={auth.state === "authenticated" && !authRecovering} playlistTitle={search ? "搜索试听" : playlist?.title} onBack={backFromDeck} onLyrics={() => setLyrics(v => !v)} onQueue={() => { setLyrics(false); setQueue(true); }} />}
       {lyrics && <section className="rhine-document rhine-lyrics" aria-label="当前歌词"><button onClick={() => setLyrics(false)}>← 返回磁带机</button><Lyrics /></section>}

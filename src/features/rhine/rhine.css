@@ -84,6 +84,19 @@
 .rhine-songs li > .rhine-song-info { width: calc(100% - 112px); grid-template-columns: 44px minmax(0,1fr); align-items: center; gap: 12px; }
 .rhine-song-actions { display: inline-flex; width: 112px; align-items: center; justify-content: flex-end; gap: 4px; vertical-align: middle; }
 .rhine-song-actions .play-next-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; padding: 7px; }
+.rhine-playlist-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 0; font-size: var(--rh-size-body); }
+.rhine-playlist-selection label { display: inline-flex; align-items: center; gap: 6px; }
+.rhine-playlist-selection input, .rhine-song-info--editable input { width: 16px; height: 16px; margin: 0; accent-color: var(--rh-accent-strong); }
+.rhine-playlist-removal { border: 1px solid rgb(var(--rh-accent-rgb) / 45%); background: #f4f3efed; padding: 12px; margin: 8px 0 14px; color: var(--rh-ink); overflow-wrap: anywhere; }
+.rhine-playlist-removal p { margin: 0 0 10px; font-size: var(--rh-size-body); }
+.rhine-playlist-removal > div { display: flex; justify-content: flex-end; gap: 16px; }
+.rhine-playlist-document .rhine-songs li > .rhine-song-info { width: calc(100% - 152px); }
+.rhine-playlist-document .rhine-songs li > .rhine-song-info--editable { grid-template-columns: 16px 44px minmax(0,1fr); }
+.rhine-playlist-document .rhine-song-actions { display: inline-flex; width: 144px; flex-wrap: nowrap; margin-top: 0; vertical-align: middle; }
+.rhine-song-actions .rhine-playlist-icon-button { display: inline-flex; width: 34px; height: 34px; padding: 7px; align-items: center; justify-content: center; flex: 0 0 34px; }
+.rhine-playlist-action-icon { display: block; width: 20px; height: 20px; background: currentColor; mask-position: center; mask-repeat: no-repeat; mask-size: 180% 180%; -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-size: 180% 180%; }
+.rhine-playlist-removal button, .rhine-playlist-selection button { border: 1px solid var(--rh-edge); border-radius: 2px; padding: 6px 10px; background: var(--rh-surface-1); font-size: var(--rh-size-body); }
+.rhine-playlist-removal button:last-child { background: var(--rh-accent-strong); color: #fff; border-color: var(--rh-accent-strong); }
 .rhine-song-text { display: grid; gap: 5px; min-width: 0; }
 .rhine-song-cover { display: block; width: 44px; height: 44px; border: 1px solid #ffffff99; background: #dedede; overflow: hidden; border-radius: 2px; }
 .rhine-song-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }

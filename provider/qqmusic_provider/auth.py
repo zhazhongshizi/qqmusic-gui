@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 import time
 import uuid
 from collections.abc import Mapping
@@ -12,6 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from .logging import SafeLogger
 from .session import QQMusicSession
 
 QR_TTL_SECONDS = 180
@@ -156,6 +158,7 @@ class QQMusicAuthSource:
             try:
                 result = await client.login.check_qrcode(handle)
             except Exception as error:
+                _log_qr_upstream_failure(error)
                 raise _map_upstream_error(error) from None
         finally:
             client.credential = previous_credential
@@ -489,6 +492,38 @@ def _has_credential(credential: object) -> bool:
 
 def _public_account(credential: Mapping[str, object], login_method: str) -> dict[str, object]:
     return {"musicId": str(credential["musicid"]), "loginMethod": login_method}
+
+
+def _log_qr_upstream_failure(error: Exception) -> None:
+    # Classify known SDK failures without recording exception text, responses,
+    # URLs or credentials. These fixed reasons locate the failed QR step.
+    reasons = {
+        "获取 p_skey 失败": "qq_signature_cookie_missing",
+        "获取 code 失败": "qq_oauth_code_missing",
+        "获取登录凭据失败: 缺少必要参数": "qq_callback_args_missing",
+        "获取登录凭据失败: 无法解析必要参数": "qq_callback_args_invalid",
+    }
+    upstream_code = getattr(error, "code", None)
+    frames = []
+    trace = error.__traceback__
+    while trace is not None:
+        module = str(trace.tb_frame.f_globals.get("__name__", ""))
+        if module.startswith(("qqmusic_api.", "niquests.", "qqmusic_provider.")):
+            frames.append({
+                "module": module,
+                "function": trace.tb_frame.f_code.co_name,
+                "line": trace.tb_lineno,
+            })
+        trace = trace.tb_next
+    SafeLogger(sys.stderr).log(
+        "debug", "auth_qr_upstream_failed",
+        errorType=type(error).__name__,
+        upstreamCode=upstream_code if type(upstream_code) is int else None,
+        stage=reasons.get(
+            str(error).removeprefix("API Data Error: "), "qr_check_or_credential_exchange"
+        ),
+        frames=frames[-8:],
+    )
 
 
 def _map_upstream_error(error: Exception, *, invalid_credential: bool = False) -> AuthFailure:

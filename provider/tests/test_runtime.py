@@ -184,6 +184,73 @@ async def test_qr_start_uses_background_task_and_emits_state_event() -> None:
     await send.aclose()
 
 
+@pytest.mark.anyio
+async def test_stale_qr_cancel_after_logout_does_not_stop_new_login() -> None:
+    source = _EventAuth()
+    source.checks = [
+        QrCheck("authenticated", {"musicid": 123, "musickey": "old-fixture-key"}),
+        QrCheck("waiting_confirmation"),
+        QrCheck("authenticated", {"musicid": 123, "musickey": "fixture-key"}),
+    ]
+    runtime = ProviderRuntime(auth_source=source)
+    # A cancellation from an older dialog can arrive after a new QR was opened.
+    await runtime.dispatch(Request("hello", "system.handshake", {"protocolVersion": 1}))
+    old = await runtime.dispatch(Request("old", "auth.qr.start", {"loginMethod": "qq"}))
+    logged_in = await runtime.dispatch(
+        Request("old-poll", "auth.qr.poll", {"sessionId": old["result"]["sessionId"]})
+    )
+    assert logged_in["result"]["state"] == "authenticated"
+    await runtime.dispatch(Request("logout", "auth.logout", {}))
+    send, receive = anyio.create_memory_object_stream[dict[str, object]](4)
+    async with anyio.create_task_group() as group:
+        runtime.attach_background(group, send)
+        fresh = await runtime.dispatch_admitted(
+            Request("fresh", "auth.qr.start", {"loginMethod": "qq"})
+        )
+        with anyio.fail_after(2):
+            scanned = await receive.receive()
+        assert scanned["payload"]["state"] == "waiting_confirmation"
+        cancelled = await runtime.dispatch_admitted(
+            Request("late-cancel", "auth.qr.cancel", {"sessionId": old["result"]["sessionId"]})
+        )
+        assert cancelled["ok"] is False
+        with anyio.fail_after(2):
+            done = await receive.receive()
+        assert done["payload"]["state"] == "authenticated"
+        assert done["payload"]["sessionId"] == fresh["result"]["sessionId"]
+        group.cancel_scope.cancel()
+    await runtime.close()
+    await send.aclose()
+
+
+@pytest.mark.anyio
+async def test_cancelling_current_qr_stops_background_polling() -> None:
+    source = _EventAuth()
+    # Any subsequent upstream call would exhaust the list and emit an error.
+    source.checks = [QrCheck("waiting_confirmation")]
+    runtime = ProviderRuntime(auth_source=source)
+    await runtime.dispatch(Request("hello", "system.handshake", {"protocolVersion": 1}))
+    send, receive = anyio.create_memory_object_stream[dict[str, object]](4)
+    async with anyio.create_task_group() as group:
+        runtime.attach_background(group, send)
+        started = await runtime.dispatch_admitted(
+            Request("start", "auth.qr.start", {"loginMethod": "qq"})
+        )
+        with anyio.fail_after(2):
+            await receive.receive()
+        cancelled = await runtime.dispatch_admitted(
+            Request("cancel", "auth.qr.cancel", {"sessionId": started["result"]["sessionId"]})
+        )
+        assert cancelled["result"]["state"] == "cancelled"
+        with anyio.move_on_after(1) as quiet:
+            await receive.receive()
+            pytest.fail("cancelled QR emitted another event")
+        assert quiet.cancel_called
+        group.cancel_scope.cancel()
+    await runtime.close()
+    await send.aclose()
+
+
 def test_slow_request_does_not_block_later_ping() -> None:
     handshake = b'{"v":1,"id":"h","method":"system.handshake","params":{"protocolVersion":1}}\n'
     search = (

@@ -110,6 +110,53 @@ pub(crate) fn initialize() {
 pub(crate) fn event(event: &'static str) {
     record(&serde_json::json!({"event":event}));
 }
+
+pub(crate) fn auth_qr_event(event: &crate::auth::AuthQrEvent) {
+    record(&auth_qr_record(event));
+}
+
+fn auth_qr_record(event: &crate::auth::AuthQrEvent) -> serde_json::Value {
+    use crate::auth::AuthQrEvent;
+    let state = match event {
+        AuthQrEvent::WaitingScan { .. } => "waiting_scan",
+        AuthQrEvent::WaitingConfirmation { .. } => "waiting_confirmation",
+        AuthQrEvent::Authenticated { .. } => "authenticated",
+        AuthQrEvent::Expired { .. } => "expired",
+        AuthQrEvent::Rejected { .. } => "rejected",
+        AuthQrEvent::Error { .. } => "error",
+    };
+    let mut entry = serde_json::json!({"event":"auth_qr_state", "state":state});
+    if let AuthQrEvent::Error {
+        code, retryable, ..
+    } = event
+    {
+        // Only fixed diagnostic codes cross into the persistent log. Never
+        // serialize the event: it also carries a QR session and account ID.
+        let code = match code.as_str() {
+            "auth_network_unavailable"
+            | "auth_rate_limited"
+            | "auth_session_not_found"
+            | "auth_account_restricted"
+            | "auth_device_limit"
+            | "auth_qr_outcome_unknown"
+            | "credential_invalid"
+            | "upstream_schema_changed"
+            | "upstream_unavailable"
+            | "upstream_timeout"
+            | "provider_error"
+            | "auth_provider_unavailable"
+            | "auth_provider_rejected"
+            | "auth_upstream_schema_changed"
+            | "auth_invalid_response"
+            | "auth_credential_store_unavailable"
+            | "auth_credential_invalid" => code.as_str(),
+            _ => "unknown_auth_error",
+        };
+        entry["code"] = serde_json::json!(code);
+        entry["retryable"] = serde_json::json!(retryable);
+    }
+    entry
+}
 pub(crate) fn native_failure(generation: u64, hresult: Option<i32>) {
     record(
         &serde_json::json!({"event":"native_media_failed", "generation":generation, "hresult":hresult.map(|v| format!("0x{:08X}", v as u32))}),
@@ -167,6 +214,35 @@ pub(crate) fn logging_frontend_error(kind: FrontendFailure) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn qr_diagnostics_exclude_session_account_and_unknown_error_contents() {
+        let event = crate::auth::AuthQrEvent::Authenticated {
+            session_id: "private-session".to_owned(),
+            account: crate::auth::PublicAccount {
+                music_id: "123456".to_owned(),
+                login_method: "qq".to_owned(),
+            },
+        };
+        assert_eq!(
+            auth_qr_record(&event),
+            serde_json::json!({
+                "event": "auth_qr_state", "state": "authenticated",
+            })
+        );
+        let error = |code: &str| crate::auth::AuthQrEvent::Error {
+            session_id: "private-session".to_owned(),
+            code: code.to_owned(),
+            retryable: false,
+        };
+        assert_eq!(
+            auth_qr_record(&error("auth_qr_outcome_unknown"))["code"],
+            "auth_qr_outcome_unknown"
+        );
+        assert_eq!(
+            auth_qr_record(&error("private_error_contents"))["code"],
+            "unknown_auth_error"
+        );
+    }
     #[test]
     fn opt_in_persists_and_disable_stops_writes() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

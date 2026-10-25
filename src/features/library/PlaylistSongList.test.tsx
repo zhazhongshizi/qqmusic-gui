@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import PlaylistSongList from "./PlaylistSongList";
 import { invalidatePlaylistSongs } from "./readPlaylistSongs";
+import { invalidateCatalogAccount } from "../../backend/catalogCacheScope";
 
-const { read, enqueue } = vi.hoisted(() => ({ read: vi.fn(), enqueue: vi.fn() }));
+const { read, enqueue, remove } = vi.hoisted(() => ({ read: vi.fn(), enqueue: vi.fn(), remove: vi.fn() }));
 vi.mock("../../backend/catalogAdapter", () => ({ getPlaylistSongs: read }));
 vi.mock("../player/catalogQueue", () => ({ enqueueCatalogTracks: enqueue }));
+vi.mock("../../backend/libraryAdapter", () => ({ removeSongsFromPlaylist: remove }));
 
 const songs: CatalogSong[] = Array.from({ length: 23 }, (_, index) => ({
   id: `song-${index}`, title: `歌曲 ${index + 1}`, subtitle: "", artist: index === 22 ? "独立歌手" : "共同歌手",
@@ -31,8 +33,91 @@ describe("playlist search and bulk queue selection", () => {
       items: pageSize === 50 ? songs : songs.slice(20),
     }));
     enqueue.mockReset().mockResolvedValue(undefined);
+    remove.mockReset().mockResolvedValue({ status: "applied" });
   });
   afterEach(cleanup);
+
+  it("单曲移出需要确认，可取消，成功后清缓存并从第一页重新读取", async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("button", { name: "将《歌曲 1》移出歌单" }));
+    expect(remove).not.toHaveBeenCalled();
+    expect(screen.getByRole("group", { name: "确认移出歌单" })).toHaveTextContent("《歌曲 1》");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(remove).not.toHaveBeenCalled();
+    read.mockResolvedValueOnce({ ...firstPage, total: 22, items: songs.slice(1, 21) });
+    await user.click(screen.getByRole("button", { name: "将《歌曲 1》移出歌单" }));
+    await user.click(screen.getByRole("button", { name: "确认移出" }));
+    expect(remove).toHaveBeenCalledExactlyOnceWith("123", "12", ["song-0"]);
+    await screen.findByText("已从“测试歌单”移出 1 首歌曲");
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "选择 歌曲 1" })).not.toBeInTheDocument());
+    expect(read).toHaveBeenCalledWith("123", 1, 1, 20, "12");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("跨页批量移出固定选择，提交期间不重复写入，失败保留选择", async () => {
+    let reject!: (error: Error) => void;
+    remove.mockImplementationOnce(() => new Promise((_resolve, failed) => { reject = failed; }));
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("checkbox", { name: "选择 歌曲 1" }));
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 歌曲 23" }));
+    await user.click(screen.getByRole("button", { name: "将所选歌曲移出歌单" }));
+    expect(screen.getByRole("group", { name: "确认移出歌单" })).toHaveTextContent("所选 2 首歌曲");
+    await user.dblClick(screen.getByRole("button", { name: "确认移出" }));
+    expect(remove).toHaveBeenCalledExactlyOnceWith("123", "12", ["song-0", "song-22"]);
+    expect(screen.getByRole("button", { name: "正在移出…" })).toBeDisabled();
+    reject(new Error("outcome unknown"));
+    await screen.findByText(/移出结果未确认/);
+    expect(screen.getByText("已选 2 首")).toBeInTheDocument();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("只读歌单和禁用管理操作的界面不显示移出入口", () => {
+    const props = { initialPage: firstPage, disabled: false, onBusyChange: vi.fn(), renderCells: (track: CatalogSong) => <td>{track.title}</td> };
+    const playlist = { id: "123", title: "收藏", description: "", songCount: 23 };
+    const view = render(<PlaylistSongList {...props} playlist={playlist} />);
+    expect(screen.queryByRole("button", { name: /移出歌单/ })).not.toBeInTheDocument();
+    view.rerender(<PlaylistSongList {...props} playlist={{ ...playlist, editableId: "12" }} allowRemoval={false} />);
+    expect(screen.queryByRole("button", { name: /移出歌单/ })).not.toBeInTheDocument();
+  });
+
+  it("离开歌单后迟到的移出结果不刷新新页面", async () => {
+    let finish!: (value: { status: string }) => void;
+    remove.mockImplementationOnce(() => new Promise(done => { finish = done; }));
+    const user = userEvent.setup();
+    const view = setup();
+    await user.click(screen.getByRole("button", { name: "将《歌曲 1》移出歌单" }));
+    await user.click(screen.getByRole("button", { name: "确认移出" }));
+    view.unmount();
+    finish({ status: "applied" });
+    await new Promise(done => setTimeout(done, 0));
+    expect(read).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("确认前账号发生变化时不向新账号提交旧选择", async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("button", { name: "将《歌曲 1》移出歌单" }));
+    invalidateCatalogAccount();
+    await user.click(screen.getByRole("button", { name: "确认移出" }));
+    expect(remove).not.toHaveBeenCalled();
+    expect(screen.queryByRole("group", { name: "确认移出歌单" })).not.toBeInTheDocument();
+  });
+
+  it("超过单次接口上限时不拆分或提交移出请求", async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 101 }, (_, index) => ({ ...songs[0]!, id: `large-${index}`, title: `批量歌曲 ${index}` }));
+    setup({ ...firstPage, total: 101, hasMore: false, items: many });
+    await user.type(screen.getByRole("searchbox"), "批量歌曲");
+    await user.click(screen.getByRole("checkbox", { name: "全选搜索结果" }));
+    await user.click(screen.getByRole("button", { name: "将所选歌曲移出歌单" }));
+    expect(screen.getByText("每次最多移出 100 首歌曲，请减少选择")).toBeInTheDocument();
+    expect(remove).not.toHaveBeenCalled();
+  });
 
   it("搜索覆盖未浏览的歌曲、歌手、专辑，忽略大小写及首尾空格并复用完整缓存", async () => {
     const user = userEvent.setup();

@@ -43,9 +43,10 @@ class QQMusicSession:
     @staticmethod
     def _default_client_factory(device_path: str) -> Any:
         from qqmusic_api import Client
-        from qqmusic_api.core.transport import NiquestsTransport
 
-        return Client(device_path=device_path, transport=NiquestsTransport(connect_retries=2))
+        from .transport import QQMusicTransport
+
+        return Client(device_path=device_path, transport=QQMusicTransport(connect_retries=2))
 
     @property
     def generation(self) -> int:

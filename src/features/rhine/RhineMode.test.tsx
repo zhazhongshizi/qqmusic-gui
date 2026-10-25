@@ -5,8 +5,8 @@ import RhineMode from "./RhineMode";
 import { playerActions, resetPlayerFixture } from "../player/playerStore";
 import { defaultRhineSettings, parseRhineSettings, RHINE_SETTINGS_STORAGE_KEY } from "./rhineSettings";
 
-const mocks = vi.hoisted(() => ({ lists: vi.fn(), songs: vi.fn(), enqueue: vi.fn(), playAll: vi.fn() }));
-vi.mock("../../backend/libraryAdapter", () => ({ getLibraryPlaylists: mocks.lists }));
+const mocks = vi.hoisted(() => ({ lists: vi.fn(), songs: vi.fn(), enqueue: vi.fn(), playAll: vi.fn(), remove: vi.fn() }));
+vi.mock("../../backend/libraryAdapter", () => ({ getLibraryPlaylists: mocks.lists, removeSongsFromPlaylist: mocks.remove }));
 vi.mock("../../backend/catalogAdapter", () => ({ getPlaylistSongs: mocks.songs }));
 vi.mock("../player/catalogQueue", async importOriginal => ({ ...await importOriginal<object>(), enqueueCatalogTrack: mocks.enqueue, replaceAndPlayCatalogTracks: mocks.playAll }));
 vi.mock("./ArchiveCanvas", () => ({ ArchiveCanvas: ({ active, renderer, frameLimit }: { active: boolean; renderer?: string; frameLimit?: number }) => <div data-testid="scene" data-active={active} data-renderer={renderer} data-frame-limit={frameLimit} /> }));
@@ -116,6 +116,30 @@ beforeEach(() => {
   mocks.songs.mockResolvedValue({ generation: 0, page: 1, hasMore: false, total: 1, warningCount: 0, items: [song] });
   mocks.enqueue.mockResolvedValue({});
   mocks.playAll.mockResolvedValue({ loadedCount: 1, truncated: false });
+  mocks.remove.mockReset().mockResolvedValue({ status: "applied" });
+});
+it("莱茵自建歌单确认移出单曲后重新读取，空歌单和数量同步且不操作队列", async () => {
+  mocks.lists.mockResolvedValue({ kind: "created", page: 1, hasMore: false, total: 1, warningCount: 0, items: [{ ...playlist, editableId: "12" }] });
+  let items = [song];
+  mocks.songs.mockImplementation(async () => ({ generation: 0, page: 1, hasMore: false, total: items.length, warningCount: 0, items }));
+  mocks.remove.mockImplementation(async () => { items = []; return { status: "applied" }; });
+  render(<RhineMode {...props} />);
+  fireEvent.click(await screen.findByRole("button", { name: /抽取档案/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "将《沿途》移出歌单" }));
+  expect(mocks.remove).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "确认移出" }));
+  await screen.findByText("这个歌单还没有歌曲");
+  expect(mocks.remove).toHaveBeenCalledExactlyOnceWith("123", "12", ["song-1"]);
+  expect(screen.getByText("0 首歌曲")).toBeInTheDocument();
+  expect(screen.getByText("已选 0 首")).toBeInTheDocument();
+  expect(mocks.playAll).not.toHaveBeenCalled();
+});
+it("莱茵只读收藏歌单不显示移出和勾选入口", async () => {
+  render(<RhineMode {...props} />);
+  fireEvent.click(await screen.findByRole("button", { name: /抽取档案/ }));
+  await screen.findByRole("button", { name: "播放 沿途" });
+  expect(screen.queryByRole("button", { name: /移出歌单/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: "选择 沿途" })).not.toBeInTheDocument();
 });
 it("点播后进入磁带机，返回时保留同一个歌单详情", async () => {
   vi.spyOn(playerActions, "playTrack").mockResolvedValueOnce(true);

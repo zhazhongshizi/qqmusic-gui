@@ -6,6 +6,8 @@ import { Icon } from "../../components/Icon";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import type { PlaylistSummary } from "../../contracts/library";
 import { enqueueCatalogTracks } from "../player/catalogQueue";
+import { usePlaylistRemoval } from "./usePlaylistRemoval";
+import { PlaylistRemovalConfirmation } from "./PlaylistRemovalConfirmation";
 
 const PAGE_SIZE = 20;
 type SelectedSong = { track: CatalogSong; position: number };
@@ -17,10 +19,15 @@ interface PlaylistSongListProps {
   disabled: boolean;
   onBusyChange: (busy: boolean) => void;
   renderCells: (track: CatalogSong) => ReactNode;
+  allowRemoval?: boolean;
+  accountKey?: string;
+  onSongsRemoved?: (ids: readonly string[]) => void;
+  onPageRead?: (page: CatalogSongPage) => void;
 }
 
 export default function PlaylistSongList({
   playlist, initialPage, currentTrackId, disabled, onBusyChange, renderCells,
+  allowRemoval = true, accountKey = "", onSongsRemoved, onPageRead,
 }: PlaylistSongListProps) {
   const [query, setQuery] = useState("");
   const [browsePage, setBrowsePage] = useState(initialPage.page);
@@ -41,6 +48,19 @@ export default function PlaylistSongList({
   const selectAllRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
   const searching = normalizedQuery.length > 0;
+  const onPageReadRef = useRef(onPageRead);
+  onPageReadRef.current = onPageRead;
+  function refreshSongs() {
+    invalidatePlaylistSongs(playlist);
+    pages.current.clear(); setAllSongs(null); setBrowsePage(1); setResultPage(1);
+    setLoading(true); setChecked(new Map()); setRetry(value => value + 1);
+  }
+  const removal = usePlaylistRemoval(playlist, disabled || busy || !allowRemoval, ids => {
+    refreshSongs();
+    onSongsRemoved?.(ids);
+  }, accountKey);
+  const canRemove = allowRemoval && !!playlist.editableId;
+  useEffect(() => { onBusyChange(busy || removal.busy); }, [busy, removal.busy, onBusyChange]);
 
   useEffect(() => {
     alive.current = true;
@@ -66,13 +86,17 @@ export default function PlaylistSongList({
         try {
           if (searching) {
             const songs = await readPlaylistSongs(playlist, initialPage.generation, () => active);
-            if (songs) setAllSongs(songs);
+            if (songs) {
+              setAllSongs(songs);
+              onPageReadRef.current?.({ ...initialPage, page: 1, items: songs.slice(0, PAGE_SIZE), total: songs.length, hasMore: songs.length > PAGE_SIZE });
+            }
             return;
           }
           const next = await getPlaylistSongs(playlist.id, initialPage.generation, browsePage, PAGE_SIZE, playlist.editableId);
           if (!active) return;
           pages.current.set(browsePage, next);
           setPage(next);
+          onPageReadRef.current?.(next);
         } catch {
           if (active) setReadError(true);
         } finally {
@@ -97,7 +121,7 @@ export default function PlaylistSongList({
   const selectable = rowsReady ? (searching ? matches : rows) : [];
   const selectedCount = selectable.filter(({ track }) => checked.has(track.id)).length;
   const allSelected = selectable.length > 0 && selectedCount === selectable.length;
-  const locked = disabled || busy;
+  const locked = disabled || busy || removal.busy || !!removal.target;
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = selectedCount > 0 && !allSelected;
@@ -152,35 +176,39 @@ export default function PlaylistSongList({
             })} />
           {searching ? "全选搜索结果" : "全选本页"}
         </label>
-        <button type="button" className="text-button" disabled={locked} onClick={()=>{invalidatePlaylistSongs(playlist);pages.current.clear();setAllSongs(null);setBrowsePage(1);setResultPage(1);setChecked(new Map());setRetry(r=>r+1);}}>刷新歌单</button>
+        <button type="button" className="text-button" disabled={locked} onClick={refreshSongs}>刷新歌单</button>
         <span className="playlist-songs__count">已选 {checked.size} 首</span>
         <button className="text-button" type="button" disabled={locked || checked.size === 0} onClick={() => setChecked(new Map())}>清空选择</button>
         <button className="text-button text-button--primary" type="button" disabled={locked || checked.size === 0} onClick={() => void addSelected()}>
           <Icon name="queue" size={16} />{busy ? "正在加入…" : "加入播放队列"}
         </button>
+        {canRemove && <button className="text-button" type="button" disabled={locked || checked.size === 0} onClick={() => removal.request([...checked.values()].map(song => song.track))}>将所选歌曲移出歌单</button>}
       </div>
+      <PlaylistRemovalConfirmation removal={removal} />
+      {removal.notice && <p role="status" className="playlist-songs__notice">{removal.notice}</p>}
       {notice ? <p role="status" className="playlist-songs__notice">{notice}</p> : null}
       {!rowsReady ? (
         readError ? <div className="catalog-empty" role="alert"><p>{searching ? "未能读取完整歌单，搜索尚未完成" : "歌曲暂时无法读取"}</p>
           <button className="text-button" type="button" onClick={() => setRetry((value) => value + 1)}>重新读取歌曲</button></div>
           : <div className="catalog-empty" role="status"><p>{searching ? "正在读取整张歌单以搜索…" : "正在读取歌曲…"}</p></div>
-      ) : rows.length === 0 ? <div className="catalog-empty"><p>歌单内没有匹配的歌曲</p><span>换一个歌名、歌手或专辑试试。</span></div> : (
+      ) : rows.length === 0 ? <div className="catalog-empty"><p>{searching ? "歌单内没有匹配的歌曲" : "这个歌单还没有歌曲"}</p>{searching && <span>换一个歌名、歌手或专辑试试。</span>}</div> : (
         <div className="catalog-table-wrap playlist-detail__table">
-          <table className="catalog-table playlist-songs__table">
-            <thead><tr><th scope="col"><span className="sr-only">选择歌曲</span>#</th><th scope="col">封面</th><th scope="col">曲目</th><th scope="col">歌手</th><th scope="col">专辑</th><th scope="col">音质</th><th scope="col">时长</th></tr></thead>
+          <table className={`catalog-table playlist-songs__table${canRemove ? " playlist-songs__table--editable" : ""}`}>
+            <thead><tr><th scope="col"><span className="sr-only">选择歌曲</span>#</th><th scope="col">封面</th><th scope="col">曲目</th><th scope="col">歌手</th><th scope="col">专辑</th><th scope="col">音质</th><th scope="col">时长</th>{canRemove && <th scope="col">操作</th>}</tr></thead>
             <tbody>{rows.map((song) => (
               <tr key={`${song.track.id}-${song.position}`} className={[currentTrackId === song.track.id ? "catalog-table__active" : "", checked.has(song.track.id) ? "playlist-songs__selected" : ""].join(" ")}>
                 <td><label className="playlist-songs__check"><input type="checkbox" aria-label={`选择 ${song.track.title}`} checked={checked.has(song.track.id)} disabled={locked} onChange={() => toggle(song)} /><span>{String(song.position + 1).padStart(2, "0")}</span></label></td>
                 {renderCells(song.track)}
+                {canRemove && <td><button className="text-button" type="button" disabled={locked} aria-label={`将《${song.track.title}》移出歌单`} onClick={() => removal.request([song.track])}>移出歌单</button></td>}
               </tr>
             ))}</tbody>
           </table>
         </div>
       )}
       {rowsReady ? <nav aria-label="歌单分页" className="playlist-detail__pagination">
-        <button className="text-button" disabled={number <= 1} type="button" onClick={() => searching ? setResultPage(number - 1) : setBrowsePage(number - 1)}>上一页</button>
+        <button className="text-button" disabled={locked || number <= 1} type="button" onClick={() => searching ? setResultPage(number - 1) : setBrowsePage(number - 1)}>上一页</button>
         <span>{searching ? `${matches.length} 首匹配 · ` : ""}第 {number} 页</span>
-        <button className="text-button" disabled={!hasMore} type="button" onClick={() => searching ? setResultPage(number + 1) : setBrowsePage(number + 1)}>下一页</button>
+        <button className="text-button" disabled={locked || !hasMore} type="button" onClick={() => searching ? setResultPage(number + 1) : setBrowsePage(number + 1)}>下一页</button>
       </nav> : null}
     </div>
   );
